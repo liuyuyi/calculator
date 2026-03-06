@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+	<meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+	<title>功能测试</title>
+	<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+	<script src="./public/js/axios.min.js"></script>
+	<script src="./public/js/moment.min.js"></script>
+
+	<style>
+		table{
+			width:100%;border-collapse: collapse; border-color:#f00;
+			font-size: 14px;
+		}
+		td{
+			padding: 6px 3px;
+			text-align: center;
+			border: 1px solid #999999;
+			
+		}
+		input{
+			height: 30px;
+			padding: 0px 4px;
+			line-height: 25px;
+		}
+		.table .item:nth-child(even){
+			background: #d6e9f6;
+		}
+		.topTab{
+			margin-bottom: 10px;
+			clear: both;
+			overflow:hidden;
+			border-bottom: 1px solid #dddddd;
+		}
+		.topTab .item{
+			float: left;
+			padding: 10px;
+			margin: 0px 10px 0px 0px;
+		}
+		.topTab .item.active{
+			background: #ff8000;
+			color: #ffffff;
+		}
+	</style>
+</head>
+<body>
+	<div id="app">
+		<h2>手机拍照功能</h2>
+		<input type="file" id="cameraInput" accept="image/*" capture="camera" style="margin: 10px 0;" />
+		<div id="imageContainer" style="margin-top: 20px;">
+			<h3>拍摄的图片：</h3>
+			<div id="imageDisplay" style="max-width: 100%;"></div>
+		</div>
+		<div id="base64Container" style="margin-top: 20px;">
+			<h3>Base64编码：</h3>
+			<textarea id="base64Display" style="width: 100%; height: 150px; padding: 10px; font-family: monospace; font-size: 12px; box-sizing: border-box;" readonly></textarea>
+		</div>
+	</div>
+
+	<script type="text/javascript">
+		// 获取文件输入元素
+		const cameraInput = document.getElementById('cameraInput');
+		const imageDisplay = document.getElementById('imageDisplay');
+		const base64Display = document.getElementById('base64Display');
+
+		// 监听文件选择事件
+		cameraInput.addEventListener('change', function(e) {
+			const file = e.target.files[0];
+			if (file) {
+				// 创建FileReader对象
+				const reader = new FileReader();
+
+				// 读取文件完成时的回调
+				reader.onload = function(event) {
+					// 获取base64编码的图片数据
+					const base64Image = event.target.result;
+
+					// 创建新的Image对象
+					const img = new Image();
+					
+					// 设置图片源为base64数据
+					img.src = base64Image;
+					
+					// 设置图片样式
+					img.style.width = '50px';
+					img.style.height = '50px';
+
+					// 添加图片加载错误处理
+					img.onerror = function() {
+						const errorMsg = document.createElement('p');
+						errorMsg.style.color = 'red';
+						errorMsg.textContent = '图片加载失败，请检查图片格式是否正确。';
+						imageDisplay.appendChild(errorMsg);
+					};
+
+					// 清空之前的内容
+					imageDisplay.innerHTML = '';
+					base64Display.value = '';
+					
+					// 添加图片到显示区域
+					imageDisplay.appendChild(img);
+					
+					// 显示base64字符串
+					base64Display.value = base64Image;
+				};
+
+				// 读取文件出错时的回调
+				reader.onerror = function() {
+					// 显示错误信息
+					imageDisplay.innerHTML = '';
+					base64Display.value = '';
+					const errorMsg = document.createElement('p');
+					errorMsg.style.color = 'red';
+					errorMsg.textContent = '文件读取失败，请检查文件是否有效。';
+					imageDisplay.appendChild(errorMsg);
+				};
+
+				// 以DataURL形式读取文件
+				reader.readAsDataURL(file);
+			}
+		});
+	</script>
+
+</body>
+</html>
