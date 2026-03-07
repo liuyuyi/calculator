@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-var DB_URL = 'mongodb://price:Liuyuyi1989@localhost:27017/price';
+var DB_URL = 'mongodb://price:Liuyuyi1989@127.0.0.1:27017/price';
 mongoose.Promise = global.Promise;
 /**
  * 连接
