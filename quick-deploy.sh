@@ -47,7 +47,35 @@ if [ -d "/root/calculator" ]; then
     [ -f "app.js" ] && pm2 start app.js --name calculator-app
     [ -f "simpleHttpServer.js" ] && pm2 start simpleHttpServer.js --name http-server
     pm2 save
-    pm2 startup systemd -u root --hp /root | bash
+    
+    # 配置 PM2 开机自启
+    cat > /etc/systemd/system/pm2-root.service << 'EOF'
+[Unit]
+Description=PM2 Process Manager
+Documentation=https://pm2.keymetrics.io/
+After=network.target
+
+[Service]
+Type=forking
+User=root
+LimitNOFILE=infinity
+LimitNPROC=infinity
+LimitCORE=infinity
+Environment=PATH=/usr/bin:/bin:/usr/local/sbin:/usr/local/bin:/root/.nvm/versions/node/v14.21.3/bin
+PIDFile=/root/.pm2/pm2.pid
+Restart=on-failure
+
+ExecStart=/root/.nvm/versions/node/v14.21.3/bin/pm2 resurrect
+ExecReload=/root/.nvm/versions/node/v14.21.3/bin/pm2 reload all
+ExecStop=/root/.nvm/versions/node/v14.21.3/bin/pm2 kill
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    
+    systemctl daemon-reload
+    systemctl enable pm2-root.service
+    
     echo "✓ 应用部署完成"
 else
     echo "⚠️  应用目录不存在，跳过应用部署"

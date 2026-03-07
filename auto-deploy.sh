@@ -307,7 +307,39 @@ EOF
         
         # 配置 PM2 开机自启
         log_info "配置 PM2 开机自启..."
-        pm2 startup systemd -u root --hp /root | bash
+        
+        # 创建 systemd 服务文件
+        cat > /etc/systemd/system/pm2-root.service << 'EOF'
+[Unit]
+Description=PM2 Process Manager
+Documentation=https://pm2.keymetrics.io/
+After=network.target
+
+[Service]
+Type=forking
+User=root
+LimitNOFILE=infinity
+LimitNPROC=infinity
+LimitCORE=infinity
+Environment=PATH=/usr/bin:/bin:/usr/local/sbin:/usr/local/bin:/root/.nvm/versions/node/v14.21.3/bin
+PIDFile=/root/.pm2/pm2.pid
+Restart=on-failure
+
+ExecStart=/root/.nvm/versions/node/v14.21.3/bin/pm2 resurrect
+ExecReload=/root/.nvm/versions/node/v14.21.3/bin/pm2 reload all
+ExecStop=/root/.nvm/versions/node/v14.21.3/bin/pm2 kill
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        
+        # 重载 systemd
+        systemctl daemon-reload
+        
+        # 启用服务
+        systemctl enable pm2-root.service
+        
+        log_success "PM2 开机自启配置完成"
         
         DEPLOYMENT_RESULTS[应用部署]="成功"
         log_success "应用部署完成"
