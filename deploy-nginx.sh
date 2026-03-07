@@ -58,20 +58,20 @@ log_info "步骤 2: 创建 Swap（如果需要）"
 echo "----------------------------------------"
 
 if [ $AVAILABLE_MEM -lt 512 ] && [ $TOTAL_SWAP -eq 0 ]; then
-    log_warning "内存不足，正在创建 2GB swap 文件..."
+    log_warning "内存不足，正在创建 4GB swap 文件..."
     
     # 检查磁盘空间
     DISK_SPACE=$(df -BG / | awk 'NR==2{print $4}' | sed 's/G//')
     log_info "可用磁盘空间: ${DISK_SPACE}GB"
     
-    if [ $DISK_SPACE -lt 2 ]; then
-        log_error "错误: 磁盘空间不足，至少需要 2GB"
+    if [ $DISK_SPACE -lt 4 ]; then
+        log_error "错误: 磁盘空间不足，至少需要 4GB"
         exit 1
     fi
     
     # 创建 swap 文件
-    log_info "创建 2GB swap 文件..."
-    dd if=/dev/zero of=/swapfile bs=1M count=2048 status=progress
+    log_info "创建 4GB swap 文件..."
+    dd if=/dev/zero of=/swapfile bs=1M count=4096 status=progress
     
     # 设置权限
     log_info "设置权限..."
@@ -155,6 +155,10 @@ stop_and_record_service "postfix"
 stop_and_record_service "smartd"
 stop_and_record_service "bluetooth"
 stop_and_record_service "cups"
+stop_and_record_service "NetworkManager"
+stop_and_record_service "wpa_supplicant"
+stop_and_record_service "rsyslog"
+stop_and_record_service "systemd-journald"
 
 # 显示已停止的服务
 if [ ${#STOPPED_SERVICES[@]} -gt 0 ]; then
@@ -175,25 +179,43 @@ echo ""
 log_info "步骤 4: 清理和优化系统"
 echo "----------------------------------------"
 
+# 停止所有可能占用内存的服务（更激进）
+log_info "停止更多服务以释放内存..."
+systemctl stop NetworkManager 2>/dev/null || true
+systemctl stop wpa_supplicant 2>/dev/null || true
+systemctl stop sshd 2>/dev/null || true
+systemctl stop NetworkManager-wait-online.service 2>/dev/null || true
+
 # 清理 yum 缓存
 log_info "清理 yum 缓存..."
 yum clean all
+rm -rf /var/cache/yum/*
 
-# 清理系统缓存
+# 清理系统缓存（更激进）
 log_info "清理系统缓存..."
 sync
 echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+sleep 1
 echo 2 > /proc/sys/vm/drop_caches 2>/dev/null || true
+sleep 1
 echo 1 > /proc/sys/vm/drop_caches 2>/dev/null || true
+sleep 1
 
 # 清理临时文件
 log_info "清理临时文件..."
 rm -rf /tmp/* 2>/dev/null || true
 rm -rf /var/tmp/* 2>/dev/null || true
+rm -rf /root/.cache/* 2>/dev/null || true
 
-# 清理日志文件（保留最近 100 行）
+# 清理日志文件（保留最近 50 行）
 log_info "清理日志文件..."
-find /var/log -type f -name "*.log" -exec sh -c 'tail -n 100 "$1" > "$1.tmp" && mv "$1.tmp" "$1"' _ {} \; 2>/dev/null || true
+find /var/log -type f -name "*.log" -exec sh -c 'tail -n 50 "$1" > "$1.tmp" && mv "$1.tmp" "$1"' _ {} \; 2>/dev/null || true
+find /var/log -type f -name "*.log.*" -delete 2>/dev/null || true
+
+# 清理包管理器缓存
+log_info "清理包管理器缓存..."
+rm -rf /var/lib/yum/yumdb/* 2>/dev/null || true
+rm -rf /var/lib/rpm/__db* 2>/dev/null || true
 
 log_success "系统清理完成"
 
@@ -205,16 +227,16 @@ free -h
 echo ""
 
 # ============================================
-# 步骤 4: 安装 EPEL 仓库
+# 步骤 5: 安装 EPEL 仓库
 # ============================================
-log_info "步骤 4: 安装 EPEL 仓库"
+log_info "步骤 5: 安装 EPEL 仓库"
 echo "----------------------------------------"
 
 if rpm -q epel-release &> /dev/null; then
     log_info "EPEL 仓库已安装"
 else
-    log_info "正在安装 EPEL 仓库..."
-    yum install -y epel-release --setopt=install_weak_deps=False --setopt=tsflags=nodocs
+    log_info "正在安装 EPEL 仓库（优化内存使用）..."
+    yum install -y epel-release --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0
     
     if [ $? -eq 0 ]; then
         log_success "EPEL 仓库安装成功"
@@ -227,9 +249,9 @@ fi
 echo ""
 
 # ============================================
-# 步骤 5: 安装 Nginx
+# 步骤 6: 安装 Nginx
 # ============================================
-log_info "步骤 5: 安装 Nginx"
+log_info "步骤 6: 安装 Nginx"
 echo "----------------------------------------"
 
 # 检查 Nginx 是否已安装
@@ -237,18 +259,18 @@ if command -v nginx &> /dev/null; then
     NGINX_VERSION=$(nginx -v 2>&1 | grep -oP 'nginx/[0-9.]*')
     log_warning "Nginx 已安装，版本: $NGINX_VERSION"
 else
-    log_info "正在安装 Nginx..."
+    log_info "正在安装 Nginx（针对 1GB 内存优化）..."
     
-    # 方法 1: 标准安装
-    log_info "尝试方法 1: 标准安装..."
-    yum install -y nginx --setopt=install_weak_deps=False --setopt=tsflags=nodocs
+    # 方法 1: 标准安装（优化参数）
+    log_info "尝试方法 1: 标准安装（优化内存）..."
+    yum install -y nginx --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0 --setopt=installonlypkgs=nginx --setopt=keepcache=0
     
     if [ $? -ne 0 ]; then
         log_warning "标准安装失败，尝试方法 2..."
         
         # 方法 2: 跳过 GPG 检查
         log_info "尝试方法 2: 跳过 GPG 检查..."
-        yum install -y --nogpgcheck nginx --setopt=install_weak_deps=False --setopt=tsflags=nodocs
+        yum install -y --nogpgcheck nginx --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0 --setopt=installonlypkgs=nginx --setopt=keepcache=0
         
         if [ $? -ne 0 ]; then
             log_warning "方法 2 失败，尝试方法 3..."
@@ -256,19 +278,31 @@ else
             # 方法 3: 手动下载安装
             log_info "尝试方法 3: 手动下载安装..."
             cd /tmp
-            wget http://nginx.org/packages/centos/7/noarch/RPMS/nginx-release-centos-7-0.el7.ngx.noarch.rpm
-            rpm -ivh nginx-release-centos-7-0.el7.ngx.noarch.rpm
-            yum install -y nginx --setopt=install_weak_deps=False --setopt=tsflags=nodocs
+            wget -q http://nginx.org/packages/centos/7/noarch/RPMS/nginx-release-centos-7-0.el7.ngx.noarch.rpm
+            rpm -ivh --nodeps nginx-release-centos-7-0.el7.ngx.noarch.rpm
+            yum install -y nginx --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0 --setopt=installonlypkgs=nginx --setopt=keepcache=0
             cd -
             
             if [ $? -ne 0 ]; then
-                log_error "所有安装方法都失败了"
-                log_error "请检查以下内容:"
-                log_error "  1. 内存是否充足"
-                log_error "  2. 磁盘空间是否充足"
-                log_error "  3. 网络连接是否正常"
-                log_error "  4. yum 仓库是否可用"
-                exit 1
+                log_warning "方法 3 失败，尝试方法 4..."
+                
+                # 方法 4: 使用 minimal 安装
+                log_info "尝试方法 4: 最小化安装..."
+                yum install -y nginx-core --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0
+                
+                if [ $? -ne 0 ]; then
+                    log_error "所有安装方法都失败了"
+                    log_error "请检查以下内容:"
+                    log_error "  1. 内存是否充足（建议至少 2GB）"
+                    log_error "  2. 磁盘空间是否充足（至少 4GB）"
+                    log_error "  3. 网络连接是否正常"
+                    log_error "  4. yum 仓库是否可用"
+                    log_error ""
+                    log_error "建议："
+                    log_error "  - 增加服务器内存到至少 2GB"
+                    log_error "  - 或者使用预编译的 Nginx 二进制文件"
+                    exit 1
+                fi
             fi
         fi
     fi
@@ -280,9 +314,9 @@ fi
 echo ""
 
 # ============================================
-# 步骤 6: 配置 Nginx
+# 步骤 7: 配置 Nginx
 # ============================================
-log_info "步骤 6: 配置 Nginx"
+log_info "步骤 7: 配置 Nginx"
 echo "----------------------------------------"
 
 # 备份原配置
@@ -330,9 +364,9 @@ fi
 echo ""
 
 # ============================================
-# 步骤 7: 启动 Nginx
+# 步骤 8: 启动 Nginx
 # ============================================
-log_info "步骤 7: 启动 Nginx"
+log_info "步骤 8: 启动 Nginx"
 echo "----------------------------------------"
 
 # 停止旧服务（如果运行）
@@ -363,9 +397,9 @@ log_success "Nginx 开机自启已配置"
 echo ""
 
 # ============================================
-# 步骤 7.5: 重新启动之前停止的服务
+# 步骤 8.5: 重新启动之前停止的服务
 # ============================================
-log_info "步骤 7.5: 重新启动之前停止的服务"
+log_info "步骤 8.5: 重新启动之前停止的服务"
 echo "----------------------------------------"
 
 # 重新启动服务
@@ -402,9 +436,9 @@ free -h
 echo ""
 
 # ============================================
-# 步骤 9: 配置防火墙
+# 步骤 10: 配置防火墙
 # ============================================
-log_info "步骤 9: 配置防火墙"
+log_info "步骤 10: 配置防火墙"
 echo "----------------------------------------"
 
 # 检查防火墙类型
@@ -445,9 +479,9 @@ fi
 echo ""
 
 # ============================================
-# 步骤 10: 验证安装
+# 步骤 11: 验证安装
 # ============================================
-log_info "步骤 10: 验证安装"
+log_info "步骤 11: 验证安装"
 echo "----------------------------------------"
 
 # 验证 Nginx 版本
@@ -476,9 +510,9 @@ fi
 echo ""
 
 # ============================================
-# 步骤 11: 生成报告
+# 步骤 12: 生成报告
 # ============================================
-log_info "步骤 11: 生成部署报告"
+log_info "步骤 12: 生成部署报告"
 echo "----------------------------------------"
 
 # 获取服务器信息
