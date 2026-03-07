@@ -1,0 +1,14 @@
+[Unit]
+Description=PM2 Process Manager with Node.js 14.21.3
+After=network.target
+
+[Service]
+Type=forking
+User=root
+WorkingDirectory=/root
+ExecStart=/root/startup-nvm-pm2.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
