@@ -16,7 +16,7 @@ echo "=========================================="
 echo ""
 
 # 1. 安装 NVM
-echo "[1/7] 安装 NVM..."
+echo "[1/8] 安装 NVM..."
 if [ ! -d "$HOME/.nvm" ]; then
     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
     export NVM_DIR="$HOME/.nvm"
@@ -29,19 +29,19 @@ else
 fi
 
 # 2. 安装 Node.js 14.21.3
-echo "[2/7] 安装 Node.js 14.21.3..."
+echo "[2/8] 安装 Node.js 14.21.3..."
 nvm install 14.21.3
 nvm use 14.21.3
 nvm alias default 14.21.3
 echo "✓ Node.js $(node -v) 安装完成"
 
 # 3. 安装 PM2
-echo "[3/7] 安装 PM2..."
+echo "[3/8] 安装 PM2..."
 npm install -g pm2
 echo "✓ PM2 $(pm2 -v) 安装完成"
 
 # 4. 部署应用
-echo "[4/7] 部署应用..."
+echo "[4/8] 部署应用..."
 if [ -d "/root/calculator" ]; then
     cd /root/calculator
     [ -f "app.js" ] && pm2 start app.js --name calculator-app
@@ -81,10 +81,34 @@ else
     echo "⚠️  应用目录不存在，跳过应用部署"
 fi
 
-# 5. 安装 Nginx
-echo "[5/7] 安装 Nginx..."
-yum install -y epel-release
-yum install -y nginx
+# 5. 检查内存并创建 swap（如果需要）
+echo "[5/8] 检查内存并创建 swap（如果需要）..."
+AVAILABLE_MEM=$(free -m | awk '/^Mem:/{print $7}')
+TOTAL_SWAP=$(free -m | awk '/^Swap:/{print $2}')
+
+echo "  可用内存: ${AVAILABLE_MEM}MB"
+echo "  当前 Swap: ${TOTAL_SWAP}MB"
+
+if [ $AVAILABLE_MEM -lt 512 ] && [ $TOTAL_SWAP -eq 0 ]; then
+    echo "  内存不足，正在创建 2GB swap 文件..."
+    dd if=/dev/zero of=/swapfile bs=1M count=2048 status=progress
+    chmod 600 /swapfile
+    mkswap /swapfile
+    swapon /swapfile
+    echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    sysctl vm.swappiness=10
+    echo 'vm.swappiness=10' >> /etc/sysctl.conf
+    echo "✓ Swap 文件创建完成"
+else
+    echo "  内存充足或已有 swap，跳过"
+fi
+
+# 6. 安装 Nginx
+echo "[6/8] 安装 Nginx..."
+systemctl stop yum-updatesd 2>/dev/null || true
+yum clean all
+yum install -y epel-release --setopt=install_weak_deps=False
+yum install -y nginx --setopt=install_weak_deps=False
 
 # 配置 Nginx
 cat > /etc/nginx/conf.d/nodejs.conf << 'EOF'
@@ -110,8 +134,8 @@ systemctl start nginx
 systemctl enable nginx
 echo "✓ Nginx 安装完成"
 
-# 6. 安装 MongoDB
-echo "[6/7] 安装 MongoDB..."
+# 7. 安装 MongoDB
+echo "[7/8] 安装 MongoDB..."
 cat > /etc/yum.repos.d/mongodb-org-4.4.repo << 'EOF'
 [mongodb-org-4.4]
 name=MongoDB Repository
@@ -158,8 +182,8 @@ mongo price --eval 'db.createUser({user: "price", pwd: "Liuyuyi1989", roles: ["r
 
 echo "✓ MongoDB 安装完成"
 
-# 7. 配置防火墙
-echo "[7/7] 配置防火墙..."
+# 8. 配置防火墙
+echo "[8/8] 配置防火墙..."
 if command -v firewall-cmd &> /dev/null; then
     firewall-cmd --zone=public --add-port=80/tcp --permanent
     firewall-cmd --zone=public --add-port=3000/tcp --permanent

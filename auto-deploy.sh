@@ -358,9 +358,59 @@ EOF
     echo ""
     
     # ============================================
-    # 步骤 6: 安装 Nginx
+    # 步骤 6: 检查内存并创建 swap（如果需要）
     # ============================================
-    log_info "步骤 6: 安装 Nginx"
+    log_info "步骤 6: 检查内存并创建 swap（如果需要）"
+    echo "----------------------------------------"
+    
+    # 检查可用内存
+    AVAILABLE_MEM=$(free -m | awk '/^Mem:/{print $7}')
+    log_info "可用内存: ${AVAILABLE_MEM}MB"
+    
+    # 检查是否已有 swap
+    TOTAL_SWAP=$(free -m | awk '/^Swap:/{print $2}')
+    log_info "当前 Swap: ${TOTAL_SWAP}MB"
+    
+    # 如果可用内存小于 512MB 且没有 swap，创建 swap
+    if [ $AVAILABLE_MEM -lt 512 ] && [ $TOTAL_SWAP -eq 0 ]; then
+        log_warning "内存不足，正在创建 2GB swap 文件..."
+        
+        # 创建 2GB swap 文件
+        dd if=/dev/zero of=/swapfile bs=1M count=2048 status=progress
+        
+        # 设置权限
+        chmod 600 /swapfile
+        
+        # 创建 swap
+        mkswap /swapfile
+        
+        # 启用 swap
+        swapon /swapfile
+        
+        # 添加到 fstab（开机自动挂载）
+        echo '/swapfile none swap sw 0 0' >> /etc/fstab
+        
+        # 优化 swap 使用
+        sysctl vm.swappiness=10
+        echo 'vm.swappiness=10' >> /etc/sysctl.conf
+        
+        log_success "Swap 文件创建完成"
+        DEPLOYMENT_RESULTS[Swap创建]="成功"
+    else
+        log_info "内存充足或已有 swap，跳过 swap 创建"
+        DEPLOYMENT_RESULTS[Swap创建]="跳过"
+    fi
+    
+    # 显示新的内存状态
+    log_info "当前内存状态:"
+    free -h
+    
+    echo ""
+    
+    # ============================================
+    # 步骤 7: 安装 Nginx
+    # ============================================
+    log_info "步骤 7: 安装 Nginx"
     echo "----------------------------------------"
     
     # 检查 Nginx 是否已安装
@@ -370,11 +420,21 @@ EOF
     else
         log_info "正在安装 Nginx..."
         
-        # 安装 EPEL 仓库
-        yum install -y epel-release
+        # 停止不必要的服务以释放内存
+        log_info "停止不必要的服务以释放内存..."
+        systemctl stop yum-updatesd 2>/dev/null || true
         
-        # 安装 Nginx
-        yum install -y nginx
+        # 清理 yum 缓存
+        log_info "清理 yum 缓存..."
+        yum clean all
+        
+        # 安装 EPEL 仓库（使用 --setopt 减少内存使用）
+        log_info "安装 EPEL 仓库..."
+        yum install -y epel-release --setopt=install_weak_deps=False
+        
+        # 安装 Nginx（使用 --setopt 减少内存使用）
+        log_info "安装 Nginx..."
+        yum install -y nginx --setopt=install_weak_deps=False
         
         if [ $? -eq 0 ]; then
             NGINX_VERSION=$(nginx -v 2>&1 | grep -oP 'nginx/[0-9.]*')
@@ -383,16 +443,32 @@ EOF
         else
             log_error "Nginx 安装失败"
             DEPLOYMENT_RESULTS[Nginx安装]="失败"
-            exit 1
+            
+            # 尝试备用安装方法
+            log_info "尝试备用安装方法..."
+            yum install -y --nogpgcheck nginx --setopt=install_weak_deps=False
+            
+            if [ $? -eq 0 ]; then
+                NGINX_VERSION=$(nginx -v 2>&1 | grep -oP 'nginx/[0-9.]*')
+                log_success "Nginx 安装成功（备用方法），版本: $NGINX_VERSION"
+                DEPLOYMENT_RESULTS[Nginx安装]="成功（备用方法）"
+            else
+                log_error "Nginx 安装失败，请检查内存和磁盘空间"
+                log_error "当前内存状态:"
+                free -h
+                log_error "当前磁盘状态:"
+                df -h
+                exit 1
+            fi
         fi
     fi
     
     echo ""
     
     # ============================================
-    # 步骤 7: 配置 Nginx
+    # 步骤 8: 配置 Nginx
     # ============================================
-    log_info "步骤 7: 配置 Nginx 反向代理"
+    log_info "步骤 8: 配置 Nginx 反向代理"
     echo "----------------------------------------"
     
     # 创建 Nginx 配置文件
@@ -443,9 +519,9 @@ EOF
     echo ""
     
     # ============================================
-    # 步骤 8: 配置防火墙
+    # 步骤 9: 配置防火墙
     # ============================================
-    log_info "步骤 8: 配置防火墙"
+    log_info "步骤 9: 配置防火墙"
     echo "----------------------------------------"
     
     # 检查防火墙类型
@@ -479,9 +555,9 @@ EOF
     echo ""
     
     # ============================================
-    # 步骤 9: 安装 MongoDB
+    # 步骤 10: 安装 MongoDB
     # ============================================
-    log_info "步骤 9: 安装 MongoDB"
+    log_info "步骤 10: 安装 MongoDB"
     echo "----------------------------------------"
     
     # 检查 MongoDB 是否已安装
@@ -518,9 +594,9 @@ EOF
     echo ""
     
     # ============================================
-    # 步骤 10: 配置 MongoDB
+    # 步骤 11: 配置 MongoDB
     # ============================================
-    log_info "步骤 10: 配置 MongoDB"
+    log_info "步骤 11: 配置 MongoDB"
     echo "----------------------------------------"
     
     # 创建数据目录
@@ -577,9 +653,9 @@ EOF
     echo ""
     
     # ============================================
-    # 步骤 11: 创建 MongoDB 用户
+    # 步骤 12: 创建 MongoDB 用户
     # ============================================
-    log_info "步骤 11: 创建 MongoDB 用户"
+    log_info "步骤 12: 创建 MongoDB 用户"
     echo "----------------------------------------"
     
     # 等待 MongoDB 完全启动
@@ -599,9 +675,9 @@ EOF
     echo ""
     
     # ============================================
-    # 步骤 12: 验证部署
+    # 步骤 13: 验证部署
     # ============================================
-    log_info "步骤 12: 验证部署"
+    log_info "步骤 13: 验证部署"
     echo "----------------------------------------"
     
     # 验证 NVM
@@ -687,9 +763,9 @@ EOF
     echo ""
     
     # ============================================
-    # 步骤 13: 测试访问
+    # 步骤 14: 测试访问
     # ============================================
-    log_info "步骤 13: 测试访问"
+    log_info "步骤 14: 测试访问"
     echo "----------------------------------------"
     
     # 测试本地访问
@@ -719,9 +795,9 @@ EOF
     echo ""
     
     # ============================================
-    # 步骤 14: 生成部署报告
+    # 步骤 15: 生成部署报告
     # ============================================
-    log_info "步骤 14: 生成部署报告"
+    log_info "步骤 15: 生成部署报告"
     echo "----------------------------------------"
     
     # 计算部署时间
