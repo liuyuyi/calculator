@@ -133,25 +133,28 @@ stop_and_record_service() {
     local service_name=$1
     if systemctl is-active --quiet $service_name 2>/dev/null; then
         log_info "停止服务: $service_name"
-        systemctl stop $service_name
-        STOPPED_SERVICES+=("$service_name")
-        log_success "已停止: $service_name"
+        if systemctl stop $service_name 2>/dev/null; then
+            STOPPED_SERVICES+=("$service_name")
+            log_success "已停止: $service_name"
+        else
+            log_warning "无法停止服务: $service_name (可能被系统保护或依赖)"
+        fi
     else
         log_info "服务未运行: $service_name"
     fi
 }
 
-# 停止可能占用内存的服务
+# 停止可能占用内存的服务（仅包含可以安全停止的服务）
 stop_and_record_service "yum-updatesd"
 stop_and_record_service "packagekit"
 stop_and_record_service "abrt-ccpp"
 stop_and_record_service "abrt-oops"
 stop_and_record_service "abrt-xorg"
-stop_and_record_service "auditd"
 stop_and_record_service "chronyd"
-stop_and_record_service "crond"
-stop_and_record_service "dbus"
-stop_and_record_service "rsyslog"
+stop_and_record_service "postfix"
+stop_and_record_service "smartd"
+stop_and_record_service "bluetooth"
+stop_and_record_service "cups"
 
 # 显示已停止的服务
 if [ ${#STOPPED_SERVICES[@]} -gt 0 ]; then
