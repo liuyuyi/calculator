@@ -120,15 +120,57 @@ fi
 echo ""
 
 # ============================================
-# 步骤 3: 清理和优化
+# 步骤 3: 停止不必要的服务
 # ============================================
-log_info "步骤 3: 清理和优化系统"
+log_info "步骤 3: 停止不必要的服务"
 echo "----------------------------------------"
 
-# 停止不必要的服务
-log_info "停止不必要的服务以释放内存..."
-systemctl stop yum-updatesd 2>/dev/null || true
-systemctl stop packagekit 2>/dev/null || true
+# 记录需要停止的服务
+STOPPED_SERVICES=()
+
+# 停止并记录服务
+stop_and_record_service() {
+    local service_name=$1
+    if systemctl is-active --quiet $service_name 2>/dev/null; then
+        log_info "停止服务: $service_name"
+        systemctl stop $service_name
+        STOPPED_SERVICES+=("$service_name")
+        log_success "已停止: $service_name"
+    else
+        log_info "服务未运行: $service_name"
+    fi
+}
+
+# 停止可能占用内存的服务
+stop_and_record_service "yum-updatesd"
+stop_and_record_service "packagekit"
+stop_and_record_service "abrt-ccpp"
+stop_and_record_service "abrt-oops"
+stop_and_record_service "abrt-xorg"
+stop_and_record_service "auditd"
+stop_and_record_service "chronyd"
+stop_and_record_service "crond"
+stop_and_record_service "dbus"
+stop_and_record_service "rsyslog"
+
+# 显示已停止的服务
+if [ ${#STOPPED_SERVICES[@]} -gt 0 ]; then
+    log_info "已停止 ${#STOPPED_SERVICES[@]} 个服务"
+    echo "  停止的服务列表:"
+    for service in "${STOPPED_SERVICES[@]}"; do
+        echo "    - $service"
+    done
+else
+    log_info "没有需要停止的服务"
+fi
+
+echo ""
+
+# ============================================
+# 步骤 4: 清理和优化
+# ============================================
+log_info "步骤 4: 清理和优化系统"
+echo "----------------------------------------"
 
 # 清理 yum 缓存
 log_info "清理 yum 缓存..."
@@ -137,11 +179,25 @@ yum clean all
 # 清理系统缓存
 log_info "清理系统缓存..."
 sync
-echo 3 > /proc/sys/vm/drop_caches
-echo 2 > /proc/sys/vm/drop_caches
-echo 1 > /proc/sys/vm/drop_caches
+echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+echo 2 > /proc/sys/vm/drop_caches 2>/dev/null || true
+echo 1 > /proc/sys/vm/drop_caches 2>/dev/null || true
+
+# 清理临时文件
+log_info "清理临时文件..."
+rm -rf /tmp/* 2>/dev/null || true
+rm -rf /var/tmp/* 2>/dev/null || true
+
+# 清理日志文件（保留最近 100 行）
+log_info "清理日志文件..."
+find /var/log -type f -name "*.log" -exec sh -c 'tail -n 100 "$1" > "$1.tmp" && mv "$1.tmp" "$1"' _ {} \; 2>/dev/null || true
 
 log_success "系统清理完成"
+
+# 显示内存状态
+echo ""
+log_info "清理后的内存状态:"
+free -h
 
 echo ""
 
@@ -304,9 +360,48 @@ log_success "Nginx 开机自启已配置"
 echo ""
 
 # ============================================
-# 步骤 8: 配置防火墙
+# 步骤 7.5: 重新启动之前停止的服务
 # ============================================
-log_info "步骤 8: 配置防火墙"
+log_info "步骤 7.5: 重新启动之前停止的服务"
+echo "----------------------------------------"
+
+# 重新启动服务
+restart_stopped_services() {
+    local service_name=$1
+    if systemctl is-enabled $service_name 2>/dev/null | grep -q "enabled"; then
+        log_info "重新启动服务: $service_name"
+        systemctl start $service_name
+        if systemctl is-active --quiet $service_name 2>/dev/null; then
+            log_success "已重新启动: $service_name"
+        else
+            log_warning "重新启动失败: $service_name"
+        fi
+    fi
+}
+
+# 重新启动之前停止的服务
+if [ ${#STOPPED_SERVICES[@]} -gt 0 ]; then
+    log_info "重新启动 ${#STOPPED_SERVICES[@]} 个服务..."
+    echo "  重新启动的服务列表:"
+    for service in "${STOPPED_SERVICES[@]}"; do
+        restart_stopped_services "$service"
+    done
+    log_success "服务重新启动完成"
+else
+    log_info "没有需要重新启动的服务"
+fi
+
+# 显示内存状态
+echo ""
+log_info "服务重新启动后的内存状态:"
+free -h
+
+echo ""
+
+# ============================================
+# 步骤 9: 配置防火墙
+# ============================================
+log_info "步骤 9: 配置防火墙"
 echo "----------------------------------------"
 
 # 检查防火墙类型
@@ -347,9 +442,9 @@ fi
 echo ""
 
 # ============================================
-# 步骤 9: 验证安装
+# 步骤 10: 验证安装
 # ============================================
-log_info "步骤 9: 验证安装"
+log_info "步骤 10: 验证安装"
 echo "----------------------------------------"
 
 # 验证 Nginx 版本
@@ -378,9 +473,9 @@ fi
 echo ""
 
 # ============================================
-# 步骤 10: 生成报告
+# 步骤 11: 生成报告
 # ============================================
-log_info "步骤 10: 生成部署报告"
+log_info "步骤 11: 生成部署报告"
 echo "----------------------------------------"
 
 # 获取服务器信息
