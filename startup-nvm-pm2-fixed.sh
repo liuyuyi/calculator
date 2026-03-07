@@ -59,7 +59,7 @@ PM2_VERSION=$(pm2 -v)
 echo "PM2 version: $PM2_VERSION" >> $LOG_FILE
 
 # 启动 pm2 应用（替换为你的实际文件名）
-APP_FILE="/root/your-app.js"
+APP_FILE="/root/simpleHttpServer.js"
 echo "Starting PM2 app: $APP_FILE" >> $LOG_FILE
 
 if [ -f "$APP_FILE" ]; then
