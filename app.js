@@ -1,4 +1,4 @@
-// const mongoose = require("./db/mongooseDb");
+const mongoose = require("./db/mongooseDb");
 const express = require("express");
 const app = express();
 const https = require("https");
@@ -113,6 +113,7 @@ const listData = [
         plating: 17.00,
     }
 ];
+
 const dataParams = {
     type: {
         type: Number
@@ -127,10 +128,10 @@ const dataParams = {
         type: Number
     }
 };
-// // 铜
-// const PriceCopperdb = mongoose.model("coppers", dataParams);
-// // 铝
-// const PriceAluminumsdb = mongoose.model("aluminums", dataParams);
+// 铜
+const PriceCopperdb = mongoose.model("coppers", dataParams);
+// 铝
+const PriceAluminumsdb = mongoose.model("aluminums", dataParams);
 
 // 定时器
 const Rule2 = new schedule.RecurrenceRule();
@@ -312,44 +313,45 @@ function getPage () {
                     ];
 
                     // 铜价格保存
-                    // PriceCopperdb.findOne(
-                    //     {
-                    //         upDateTime: priceData.upDateTime
-                    //     },
-                    //     (err, doc) => {
-                    //         if (doc === null) {
-                    //             let coPriceDb = new PriceCopperdb(
-                    //                 Object.assign(copper, priceData)
-                    //             );
-                    //             coPriceDb.save();
-                    //         }
-                    //     }
-                    // );
+                    PriceCopperdb.findOne(
+                        {
+                            upDateTime: priceData.upDateTime
+                        },
+                        (err, doc) => {
+                            if (doc === null) {
+                                let coPriceDb = new PriceCopperdb(
+                                            Object.assign(copper, priceData)
+                                        );
+                                coPriceDb.save();
+                            }
+                        }
+                    );
 
                     // 铝价格保存
-                    // PriceAluminumsdb.findOne(
-                    //     {
-                    //         upDateTime: priceData.upDateTime
-                    //     },
-                    //     (err, doc) => {
-                    //         if (doc === null) {
-                    //             let alPriceDb = new PriceAluminumsdb(
-                    //                 Object.assign(aluminum, priceData)
-                    //             );
-                    //             alPriceDb.save();
-                    if (nowCoPrice === coPrice && nowAlPrice === alPrice) {
-                        console.log('价格相同')
-                        return
-                    }
-                    send(mail);
-                    nowCoPrice = coPrice
-                    nowAlPrice = alPrice
-                                // setTimeout(() => {
-                                //     fs.unlinkSync("./public/images/example.jpg");
-                                // }, 2000);
-                    //         }
-                    //     }
-                    // );
+                    PriceAluminumsdb.findOne(
+                        {
+                            upDateTime: priceData.upDateTime
+                        },
+                        (err, doc) => {
+                            if (doc === null) {
+                                let alPriceDb = new PriceAluminumsdb(
+                                            Object.assign(aluminum, priceData)
+                                        );
+                                alPriceDb.save();
+                            }
+                            
+                            if (nowCoPrice === coPrice && nowAlPrice === alPrice) {
+                                console.log('价格相同')
+                                return
+                            }
+                            send(mail);
+                            nowCoPrice = coPrice
+                            nowAlPrice = alPrice
+                            // setTimeout(() => {
+                            //     fs.unlinkSync("./public/images/example.jpg");
+                            // },2000);
+                        }
+                    );
                 });
             })
             .on("error", function (err) {
@@ -368,77 +370,77 @@ function send(mail) {
     });
 }
 
-// app.use('/public', express.static('public'));
-// app.get('/', (req, res) => {
-//     res.sendFile(__dirname + "/" + "index.html");
-// });
-// app.get('/getPrice', (req, res) => {
+app.use('/public', express.static('public'));
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + "/" + "index.html");
+});
+app.get('/getPrice', (req, res) => {
 
-//     PriceModeldb.find({
-//         // creatDate: {
-//         //     $lt: req.query.time
-//         // }
-//     }, function (err, doc) {
-//         res.end(JSON.stringify(doc[0]));
-//     }).sort({_id: -1}).limit(1);
-// });
+    PriceModeldb.find({
+        // creatDate: {
+        //     $lt: req.query.time
+        // }
+    }, function (err, doc) {
+        res.end(JSON.stringify(doc[0]));
+    }).sort({_id: -1}).limit(1);
+});
 
-// app.get('/getPriceAll', (req, res) => {
+app.get('/getPriceAll', (req, res) => {
 
-//     const params = req.query;
-//     const query = PriceModeldb.find({});
+    const params = req.query;
+    const query = PriceModeldb.find({});
 
-//     let num = params.pageSize*1 || 10;        // 每页几条
-//     let total = 0;                            // 总数
-//     let skip = (params.pageNo*1-1) * num;     // 页数*条数
-//     let lastPageNum = 0;
+    let num = params.pageSize*1 || 10;        // 每页几条
+    let total = 0;                            // 总数
+    let skip = (params.pageNo*1-1) * num;     // 页数*条数
+    let lastPageNum = 0;
 
-//     PriceModeldb.find({
-//         // creatDate: {
-//         //     $lt: req.query.time
-//         // }
-//     },
-//     function (err, data) {
-//         if (err) {
-//             //查询错误
-//         } else {
-//             total = data.length; //获得总条数
-//             lastPageNum = Math.ceil(total/num);
-//         }
-//     });
+    PriceModeldb.find({
+        // creatDate: {
+        //     $lt: req.query.time
+        // }
+    },
+    function (err, data) {
+        if (err) {
+            //查询错误
+        } else {
+            total = data.length; //获得总条数
+            lastPageNum = Math.ceil(total/num);
+        }
+    });
 
-//     query.limit(num); //限制条数，每次查多少条
-//     query.skip(skip); //开始数 ，当前查第几页*每页显示第几条得到开始条数
-//     query.exec((err, value) => {
+    query.limit(num); //限制条数，每次查多少条
+    query.skip(skip); //开始数 ，当前查第几页*每页显示第几条得到开始条数
+    query.exec((err, value) => {
 
-//         if (err) {
-//             //返回错误
-//         } else {
-//             //得到数据
-//             const page = {
-//                 page_no: (params.pageNo*1) + 1,
-//                 page_size: num,
-//                 total: total,
-//                 lastPageNum: lastPageNum,
-//                 data: [...value]
-//             };
-//             console.log('回调成功')
-//             //返回成功
-//             res.end(JSON.stringify(page));
-//         }
+        if (err) {
+            //返回错误
+        } else {
+            //得到数据
+            const page = {
+                page_no: (params.pageNo*1) + 1,
+                page_size: num,
+                total: total,
+                lastPageNum: lastPageNum,
+                data: [...value]
+            };
+            console.log('回调成功')
+            //返回成功
+            res.end(JSON.stringify(page));
+        }
 
-//     });
+    });
 
-// });
+});
 
-// var server = app.listen(3000, () =>{
+var server = app.listen(3000, () =>{
 
-//     var host = server.address().address;
-//     var port = server.address().port;
+    var host = server.address().address;
+    var port = server.address().port;
 
-//     console.log("应用实例，访问地址为 http://%s:%s", host, port)
+    console.log("应用实例，访问地址为 http://%s:%s", host, port)
 
-// });
+});
 
 // 截取网页生成图
 // #依赖库
