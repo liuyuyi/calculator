@@ -420,21 +420,17 @@ EOF
     else
         log_info "正在安装 Nginx..."
         
-        # 停止不必要的服务以释放内存
-        log_info "停止不必要的服务以释放内存..."
-        systemctl stop yum-updatesd 2>/dev/null || true
-        
         # 清理 yum 缓存
         log_info "清理 yum 缓存..."
         yum clean all
         
         # 安装 EPEL 仓库（使用 --setopt 减少内存使用）
         log_info "安装 EPEL 仓库..."
-        yum install -y epel-release --setopt=install_weak_deps=False
+        yum install -y epel-release --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0
         
         # 安装 Nginx（使用 --setopt 减少内存使用）
         log_info "安装 Nginx..."
-        yum install -y nginx --setopt=install_weak_deps=False
+        yum install -y nginx --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0 --setopt=installonlypkgs=nginx --setopt=keepcache=0
         
         if [ $? -eq 0 ]; then
             NGINX_VERSION=$(nginx -v 2>&1 | grep -oP 'nginx/[0-9.]*')
@@ -446,7 +442,7 @@ EOF
             
             # 尝试备用安装方法
             log_info "尝试备用安装方法..."
-            yum install -y --nogpgcheck nginx --setopt=install_weak_deps=False
+            yum install -y --nogpgcheck nginx --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0 --setopt=installonlypkgs=nginx --setopt=keepcache=0
             
             if [ $? -eq 0 ]; then
                 NGINX_VERSION=$(nginx -v 2>&1 | grep -oP 'nginx/[0-9.]*')
