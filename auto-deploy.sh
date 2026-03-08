@@ -586,7 +586,7 @@ EOF
         # 安装 MongoDB
         yum install -y mongodb-org --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0
         
-        if [ $? -eq 0 ]; then
+        if [ $? -eq 0 ] && command -v mongod &> /dev/null; then
             MONGO_VERSION=$(mongod --version | grep -oP 'db version v[0-9.]*')
             log_success "MongoDB 安装成功，版本: $MONGO_VERSION"
             DEPLOYMENT_RESULTS[MongoDB安装]="成功"
@@ -608,7 +608,7 @@ EOF
             yum clean all
             yum install -y mongodb-org --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0
             
-            if [ $? -eq 0 ]; then
+            if [ $? -eq 0 ] && command -v mongod &> /dev/null; then
                 MONGO_VERSION=$(mongod --version | grep -oP 'db version v[0-9.]*')
                 log_success "MongoDB 安装成功，版本: $MONGO_VERSION"
                 DEPLOYMENT_RESULTS[MongoDB安装]="成功"
@@ -630,7 +630,7 @@ EOF
                 yum clean all
                 yum install -y mongodb-org --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0
                 
-                if [ $? -eq 0 ]; then
+                if [ $? -eq 0 ] && command -v mongod &> /dev/null; then
                     MONGO_VERSION=$(mongod --version | grep -oP 'db version v[0-9.]*')
                     log_success "MongoDB 安装成功，版本: $MONGO_VERSION"
                     DEPLOYMENT_RESULTS[MongoDB安装]="成功"
@@ -643,7 +643,7 @@ EOF
                     yum install -y epel-release --setopt=install_weak_deps=False --setopt=tsflags=nodocs
                     yum install -y mongodb --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0
                     
-                    if [ $? -eq 0 ]; then
+                    if [ $? -eq 0 ] && command -v mongod &> /dev/null; then
                         MONGO_VERSION=$(mongod --version | grep -oP 'db version v[0-9.]*')
                         log_success "MongoDB 安装成功，版本: $MONGO_VERSION"
                         DEPLOYMENT_RESULTS[MongoDB安装]="成功"
