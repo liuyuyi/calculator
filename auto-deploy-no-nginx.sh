@@ -445,10 +445,9 @@ EOF
     
     # 方法 2: 尝试安装 iptables-services
     if [ "$FIREWALL_CONFIGURED" = false ]; then
-        log_info "尝试安装 iptables-services..."
-        
-        if yum install -y iptables-services --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0; then
-            log_success "iptables-services 安装成功"
+        # 检查 iptables-services 是否已安装
+        if rpm -q iptables-services &> /dev/null; then
+            log_info "iptables-services 已安装"
             
             # 启动 iptables
             systemctl start iptables
@@ -468,7 +467,31 @@ EOF
                 FIREWALL_CONFIGURED=true
             fi
         else
-            log_warning "iptables-services 安装失败"
+            log_info "尝试安装 iptables-services..."
+            
+            if yum install -y iptables-services --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0; then
+                log_success "iptables-services 安装成功"
+                
+                # 启动 iptables
+                systemctl start iptables
+                systemctl enable iptables
+                
+                # 配置防火墙
+                if command -v iptables &> /dev/null; then
+                    log_info "使用 iptables 配置防火墙"
+                    
+                    # 开放 3000 端口
+                    iptables -I INPUT -p tcp --dport 3000 -j ACCEPT
+                    iptables-save > /etc/sysconfig/iptables
+                    
+                    log_success "防火墙规则已添加"
+                    log_info "已开放端口: 3000"
+                    DEPLOYMENT_RESULTS[防火墙配置]="成功"
+                    FIREWALL_CONFIGURED=true
+                fi
+            else
+                log_warning "iptables-services 安装失败"
+            fi
         fi
     fi
     
