@@ -567,6 +567,9 @@ EOF
     else
         log_info "正在安装 MongoDB..."
         
+        # 方法 1: 尝试 MongoDB 4.4
+        log_info "尝试方法 1: 安装 MongoDB 4.4..."
+        
         # 配置 MongoDB 仓库
         cat > /etc/yum.repos.d/mongodb-org-4.4.repo << 'EOF'
 [mongodb-org-4.4]
@@ -577,17 +580,100 @@ enabled=1
 gpgkey=https://www.mongodb.org/static/pgp/server-4.4.asc
 EOF
         
+        # 清理 yum 缓存
+        yum clean all
+        
         # 安装 MongoDB
-        yum install -y mongodb-org
+        yum install -y mongodb-org --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0
         
         if [ $? -eq 0 ]; then
             MONGO_VERSION=$(mongod --version | grep -oP 'db version v[0-9.]*')
             log_success "MongoDB 安装成功，版本: $MONGO_VERSION"
             DEPLOYMENT_RESULTS[MongoDB安装]="成功"
         else
-            log_error "MongoDB 安装失败"
-            DEPLOYMENT_RESULTS[MongoDB安装]="失败"
-            exit 1
+            log_warning "MongoDB 4.4 安装失败，尝试方法 2..."
+            
+            # 方法 2: 尝试 MongoDB 4.2
+            log_info "尝试方法 2: 安装 MongoDB 4.2..."
+            
+            cat > /etc/yum.repos.d/mongodb-org-4.2.repo << 'EOF'
+[mongodb-org-4.2]
+name=MongoDB Repository
+baseurl=https://repo.mongodb.org/yum/redhat/$releasever/mongodb-org/4.2/x86_64/
+gpgcheck=1
+enabled=1
+gpgkey=https://www.mongodb.org/static/pgp/server-4.2.asc
+EOF
+            
+            yum clean all
+            yum install -y mongodb-org --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0
+            
+            if [ $? -eq 0 ]; then
+                MONGO_VERSION=$(mongod --version | grep -oP 'db version v[0-9.]*')
+                log_success "MongoDB 安装成功，版本: $MONGO_VERSION"
+                DEPLOYMENT_RESULTS[MongoDB安装]="成功"
+            else
+                log_warning "MongoDB 4.2 安装失败，尝试方法 3..."
+                
+                # 方法 3: 尝试 MongoDB 3.6
+                log_info "尝试方法 3: 安装 MongoDB 3.6..."
+                
+                cat > /etc/yum.repos.d/mongodb-org-3.6.repo << 'EOF'
+[mongodb-org-3.6]
+name=MongoDB Repository
+baseurl=https://repo.mongodb.org/yum/redhat/$releasever/mongodb-org/3.6/x86_64/
+gpgcheck=1
+enabled=1
+gpgkey=https://www.mongodb.org/static/pgp/server-3.6.asc
+EOF
+                
+                yum clean all
+                yum install -y mongodb-org --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0
+                
+                if [ $? -eq 0 ]; then
+                    MONGO_VERSION=$(mongod --version | grep -oP 'db version v[0-9.]*')
+                    log_success "MongoDB 安装成功，版本: $MONGO_VERSION"
+                    DEPLOYMENT_RESULTS[MongoDB安装]="成功"
+                else
+                    log_warning "MongoDB 3.6 安装失败，尝试方法 4..."
+                    
+                    # 方法 4: 使用 EPEL 仓库
+                    log_info "尝试方法 4: 使用 EPEL 仓库安装 MongoDB..."
+                    
+                    yum install -y epel-release --setopt=install_weak_deps=False --setopt=tsflags=nodocs
+                    yum install -y mongodb --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0
+                    
+                    if [ $? -eq 0 ]; then
+                        MONGO_VERSION=$(mongod --version | grep -oP 'db version v[0-9.]*')
+                        log_success "MongoDB 安装成功，版本: $MONGO_VERSION"
+                        DEPLOYMENT_RESULTS[MongoDB安装]="成功"
+                    else
+                        log_error "MongoDB 安装失败，所有方法都失败了"
+                        log_error "可能的原因:"
+                        log_error "  1. 内存不足（建议至少 2GB）"
+                        log_error "  2. CentOS 版本不支持 MongoDB 4.4/4.2/3.6"
+                        log_error "  3. 网络连接问题"
+                        log_error "  4. yum 仓库配置问题"
+                        log_error ""
+                        log_error "建议解决方案:"
+                        log_error "  1. 升级服务器内存到至少 2GB"
+                        log_error "  2. 使用 Docker 运行 MongoDB"
+                        log_error "  3. 跳过 MongoDB 安装（应用可能不需要）"
+                        log_error "  4. 使用云数据库服务（如 MongoDB Atlas）"
+                        log_error ""
+                        log_warning "是否跳过 MongoDB 安装并继续部署？(y/n)"
+                        read -t 30 SKIP_MONGO
+                        
+                        if [ "$SKIP_MONGO" = "y" ] || [ "$SKIP_MONGO" = "Y" ]; then
+                            log_warning "跳过 MongoDB 安装"
+                            DEPLOYMENT_RESULTS[MongoDB安装]="跳过"
+                        else
+                            DEPLOYMENT_RESULTS[MongoDB安装]="失败"
+                            exit 1
+                        fi
+                    fi
+                fi
+            fi
         fi
     fi
     
