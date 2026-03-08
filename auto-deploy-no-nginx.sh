@@ -417,32 +417,155 @@ EOF
     echo "----------------------------------------"
     
     # 检查防火墙类型
-    if command -v firewall-cmd &> /dev/null; then
-        log_info "使用 firewalld 配置防火墙"
+    FIREWALL_CONFIGURED=false
+    
+    # 方法 1: 检查 firewalld
+    if systemctl is-active --quiet firewalld 2>/dev/null; then
+        log_info "检测到 firewalld 服务正在运行"
         
-        # 开放 3000 端口
-        firewall-cmd --zone=public --add-port=3000/tcp --permanent
-        firewall-cmd --reload
+        if command -v firewall-cmd &> /dev/null; then
+            log_info "使用 firewalld 配置防火墙"
+            
+            # 开放 3000 端口
+            firewall-cmd --zone=public --add-port=3000/tcp --permanent
+            firewall-cmd --reload
+            
+            log_success "防火墙规则已添加"
+            log_info "已开放端口: 3000"
+            DEPLOYMENT_RESULTS[防火墙配置]="成功"
+            FIREWALL_CONFIGURED=true
+        else
+            log_warning "firewalld 服务正在运行，但 firewall-cmd 命令不可用"
+        fi
+    fi
+    
+    # 方法 2: 检查 iptables
+    if [ "$FIREWALL_CONFIGURED" = false ]; then
+        if systemctl is-active --quiet iptables 2>/dev/null || systemctl is-active --quiet iptables-services 2>/dev/null; then
+            log_info "检测到 iptables 服务正在运行"
+            
+            if command -v iptables &> /dev/null; then
+                log_info "使用 iptables 配置防火墙"
+                
+                # 开放 3000 端口
+                iptables -I INPUT -p tcp --dport 3000 -j ACCEPT
+                
+                # 保存规则
+                if command -v iptables-save &> /dev/null; then
+                    iptables-save > /etc/sysconfig/iptables 2>/dev/null || service iptables save 2>/dev/null || true
+                fi
+                
+                log_success "防火墙规则已添加"
+                log_info "已开放端口: 3000"
+                DEPLOYMENT_RESULTS[防火墙配置]="成功"
+                FIREWALL_CONFIGURED=true
+            else
+                log_warning "iptables 服务正在运行，但 iptables 命令不可用"
+            fi
+        fi
+    fi
+    
+    # 方法 3: 尝试安装 firewalld
+    if [ "$FIREWALL_CONFIGURED" = false ]; then
+        log_info "未检测到防火墙服务，尝试安装 firewalld..."
         
-        log_success "防火墙规则已添加"
-        log_info "已开放端口: 3000"
-        DEPLOYMENT_RESULTS[防火墙配置]="成功"
+        if yum install -y firewalld --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0; then
+            log_success "firewalld 安装成功"
+            
+            # 启动 firewalld
+            systemctl start firewalld
+            systemctl enable firewalld
+            
+            # 配置防火墙
+            if command -v firewall-cmd &> /dev/null; then
+                log_info "使用 firewalld 配置防火墙"
+                
+                # 开放 3000 端口
+                firewall-cmd --zone=public --add-port=3000/tcp --permanent
+                firewall-cmd --reload
+                
+                log_success "防火墙规则已添加"
+                log_info "已开放端口: 3000"
+                DEPLOYMENT_RESULTS[防火墙配置]="成功"
+                FIREWALL_CONFIGURED=true
+            fi
+        else
+            log_warning "firewalld 安装失败"
+        fi
+    fi
+    
+    # 方法 4: 尝试安装 iptables-services
+    if [ "$FIREWALL_CONFIGURED" = false ]; then
+        log_info "尝试安装 iptables-services..."
         
-    elif command -v iptables &> /dev/null; then
-        log_info "使用 iptables 配置防火墙"
+        if yum install -y iptables-services --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0; then
+            log_success "iptables-services 安装成功"
+            
+            # 启动 iptables
+            systemctl start iptables
+            systemctl enable iptables
+            
+            # 配置防火墙
+            if command -v iptables &> /dev/null; then
+                log_info "使用 iptables 配置防火墙"
+                
+                # 开放 3000 端口
+                iptables -I INPUT -p tcp --dport 3000 -j ACCEPT
+                iptables-save > /etc/sysconfig/iptables
+                
+                log_success "防火墙规则已添加"
+                log_info "已开放端口: 3000"
+                DEPLOYMENT_RESULTS[防火墙配置]="成功"
+                FIREWALL_CONFIGURED=true
+            fi
+        else
+            log_warning "iptables-services 安装失败"
+        fi
+    fi
+    
+    # 检查 SELinux 状态
+    if command -v getenforce &> /dev/null; then
+        SELINUX_STATUS=$(getenforce)
+        log_info "SELinux 状态: $SELINUX_STATUS"
         
-        # 开放 3000 端口
-        iptables -I INPUT -p tcp --dport 3000 -j ACCEPT
-        service iptables save
-        
-        log_success "防火墙规则已添加"
-        log_info "已开放端口: 3000"
-        DEPLOYMENT_RESULTS[防火墙配置]="成功"
-        
-    else
-        log_warning "未找到防火墙命令，跳过防火墙配置"
+        if [ "$SELINUX_STATUS" = "Enforcing" ]; then
+            log_warning "SELinux 处于强制模式，可能影响端口访问"
+            log_info "建议临时关闭 SELinux: setenforce 0"
+            log_info "或永久关闭: sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/selinux/config"
+        fi
+    fi
+    
+    # 如果防火墙未配置，提供手动配置指导
+    if [ "$FIREWALL_CONFIGURED" = false ]; then
+        log_warning "防火墙未配置"
         log_info "请手动配置防火墙开放端口: 3000"
-        DEPLOYMENT_RESULTS[防火墙配置]="跳过"
+        echo ""
+        log_info "手动配置方法:"
+        echo "  方法 1: 安装 firewalld"
+        echo "    yum install -y firewalld"
+        echo "    systemctl start firewalld"
+        echo "    systemctl enable firewalld"
+        echo "    firewall-cmd --zone=public --add-port=3000/tcp --permanent"
+        echo "    firewall-cmd --reload"
+        echo ""
+        echo "  方法 2: 安装 iptables-services"
+        echo "    yum install -y iptables-services"
+        echo "    systemctl start iptables"
+        echo "    systemctl enable iptables"
+        echo "    iptables -I INPUT -p tcp --dport 3000 -j ACCEPT"
+        echo "    iptables-save > /etc/sysconfig/iptables"
+        echo ""
+        echo "  方法 3: 关闭防火墙（不推荐）"
+        echo "    systemctl stop firewalld 2>/dev/null || systemctl stop iptables 2>/dev/null"
+        echo "    systemctl disable firewalld 2>/dev/null || systemctl disable iptables 2>/dev/null"
+        echo ""
+        log_info "云服务商安全组配置:"
+        echo "  阿里云 ECS: 在安全组中添加入方向规则，端口 3000，授权对象 0.0.0.0/0"
+        echo "  腾讯云 CVM: 在安全组中添加入站规则，端口 3000，来源 0.0.0.0/0"
+        echo "  华为云 ECS: 在安全组中添加入方向规则，端口 3000，源地址 0.0.0.0/0"
+        echo ""
+        
+        DEPLOYMENT_RESULTS[防火墙配置]="未配置（需要手动配置）"
     fi
     
     echo ""
