@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 自动化部署脚本（不安装 Nginx 版本）
-# 功能：安装 NVM、Node.js 14.21.3、PM2、MongoDB 并配置应用
+# 功能：安装 NVM、Node.js 14.21.3、PM2、MySQL 并配置应用
 # 外网访问方式：直接暴露 3000 端口
 
 set -e  # 遇到错误立即退出
@@ -249,9 +249,130 @@ EOF
     echo ""
     
     # ============================================
-    # 步骤 5: 部署应用
+    # 步骤 5: 安装 MySQL
     # ============================================
-    log_info "步骤 5: 部署应用"
+    log_info "步骤 5: 安装 MySQL"
+    echo "----------------------------------------"
+    
+    # 检查 MySQL 是否已安装
+    if command -v mysql &> /dev/null; then
+        log_warning "MySQL 已安装，跳过安装"
+    else
+        log_info "正在安装 MySQL..."
+        
+        # 清理现有 MySQL 相关包
+        yum remove -y mysql mysql-server mysql-libs mysql-common 2>/dev/null || true
+        rm -rf /var/lib/mysql 2>/dev/null || true
+        rm -rf /etc/my.cnf 2>/dev/null || true
+        
+        # 安装 MySQL 8.0
+        log_info "安装 MySQL 8.0..."
+        
+        # 配置 MySQL 8.0 仓库
+        cat > /etc/yum.repos.d/mysql-community.repo << 'EOF'
+[mysql80-community]
+name=MySQL 8.0 Community Server
+baseurl=https://repo.mysql.com/yum/mysql-8.0-community/el/7/$basearch/
+enabled=1
+gpgcheck=1
+gpgkey=https://repo.mysql.com/RPM-GPG-KEY-mysql
+EOF
+        
+        # 安装 MySQL
+        yum install -y mysql-community-server --setopt=install_weak_deps=False --setopt=tsflags=nodocs
+        
+        if [ $? -eq 0 ]; then
+            log_success "MySQL 安装成功"
+            DEPLOYMENT_RESULTS[MySQL安装]="成功"
+        else
+            log_warning "MySQL 8.0 安装失败，尝试 MySQL 5.7..."
+            
+            # 配置 MySQL 5.7 仓库
+            cat > /etc/yum.repos.d/mysql-community.repo << 'EOF'
+[mysql57-community]
+name=MySQL 5.7 Community Server
+baseurl=https://repo.mysql.com/yum/mysql-5.7-community/el/7/$basearch/
+enabled=1
+gpgcheck=1
+gpgkey=https://repo.mysql.com/RPM-GPG-KEY-mysql
+EOF
+            
+            # 安装 MySQL 5.7
+            yum install -y mysql-community-server --setopt=install_weak_deps=False --setopt=tsflags=nodocs
+            
+            if [ $? -eq 0 ]; then
+                log_success "MySQL 5.7 安装成功"
+                DEPLOYMENT_RESULTS[MySQL安装]="成功"
+            else
+                log_error "MySQL 安装失败"
+                log_warning "尝试使用 MariaDB 作为替代..."
+                
+                # 安装 MariaDB
+                yum install -y mariadb-server --setopt=install_weak_deps=False --setopt=tsflags=nodocs
+                
+                if [ $? -eq 0 ]; then
+                    log_success "MariaDB 安装成功"
+                    DEPLOYMENT_RESULTS[MySQL安装]="成功（MariaDB）"
+                else
+                    log_error "所有数据库安装都失败了"
+                    DEPLOYMENT_RESULTS[MySQL安装]="失败"
+                    exit 1
+                fi
+            fi
+        fi
+    fi
+    
+    # 启动 MySQL 服务
+    log_info "启动 MySQL 服务..."
+    systemctl start mysqld 2>/dev/null || systemctl start mariadb 2>/dev/null
+    systemctl enable mysqld 2>/dev/null || systemctl enable mariadb 2>/dev/null
+    
+    if wait_for_service mysqld 2>/dev/null || wait_for_service mariadb 2>/dev/null; then
+        log_success "MySQL 服务启动成功"
+        DEPLOYMENT_RESULTS[MySQL启动]="成功"
+    else
+        log_error "MySQL 服务启动失败"
+        DEPLOYMENT_RESULTS[MySQL启动]="失败"
+        exit 1
+    fi
+    
+    # 配置 MySQL
+    log_info "配置 MySQL..."
+    
+    # 获取临时密码（MySQL 8.0）
+    if command -v mysql &> /dev/null; then
+        TEMP_PASS=$(grep 'temporary password' /var/log/mysqld.log 2>/dev/null | tail -1 | awk '{print $NF}')
+        
+        if [ -n "$TEMP_PASS" ]; then
+            # 重置密码
+            log_info "重置 MySQL 密码..."
+            mysql -u root -p"$TEMP_PASS" --connect-expired-password -e "ALTER USER 'root'@'localhost' IDENTIFIED BY 'Liuyuyi1989';" 2>/dev/null || true
+        else
+            # 尝试无密码登录（MariaDB）
+            mysql -u root -e "SET PASSWORD FOR 'root'@'localhost' = PASSWORD('Liuyuyi1989');" 2>/dev/null || true
+        fi
+        
+        # 创建数据库和用户
+        log_info "创建数据库和用户..."
+        mysql -u root -p'Liuyuyi1989' -e "CREATE DATABASE IF NOT EXISTS price_db;"
+        mysql -u root -p'Liuyuyi1989' -e "CREATE USER IF NOT EXISTS 'price'@'localhost' IDENTIFIED BY 'Liuyuyi1989';"
+        mysql -u root -p'Liuyuyi1989' -e "GRANT ALL PRIVILEGES ON price_db.* TO 'price'@'localhost';"
+        mysql -u root -p'Liuyuyi1989' -e "FLUSH PRIVILEGES;"
+        
+        log_success "MySQL 配置完成"
+        DEPLOYMENT_RESULTS[MySQL配置]="成功"
+    else
+        log_error "MySQL 命令不可用"
+        DEPLOYMENT_RESULTS[MySQL配置]="失败"
+        exit 1
+    fi
+    
+    echo ""
+    
+    # ============================================
+    # 步骤 6: 部署应用
+    # ============================================
+    log_info "步骤 6: 部署应用"
     echo "----------------------------------------"
     
     # 检查应用目录
@@ -263,6 +384,22 @@ EOF
         DEPLOYMENT_RESULTS[应用部署]="跳过（目录不存在）"
     else
         log_info "应用目录存在: $APP_DIR"
+        
+        # 安装应用依赖
+        log_info "安装应用依赖..."
+        cd $APP_DIR
+        npm install mysql2 express cheerio nodemailer node-schedule puppeteer
+        
+        if [ $? -eq 0 ]; then
+            log_success "应用依赖安装成功"
+            DEPLOYMENT_RESULTS[依赖安装]="成功"
+        else
+            log_error "应用依赖安装失败"
+            DEPLOYMENT_RESULTS[依赖安装]="失败"
+        fi
+        
+        # 确保目录存在
+        mkdir -p $APP_DIR/public/images
         
         # 启动 app.js
         log_info "启动 app.js..."
@@ -361,9 +498,9 @@ EOF
     echo ""
     
     # ============================================
-    # 步骤 6: 检查内存并创建 swap（如果需要）
+    # 步骤 7: 检查内存并创建 swap（如果需要）
     # ============================================
-    log_info "步骤 6: 检查内存并创建 swap（如果需要）"
+    log_info "步骤 7: 检查内存并创建 swap（如果需要）"
     echo "----------------------------------------"
     
     # 检查可用内存
@@ -411,9 +548,9 @@ EOF
     echo ""
     
     # ============================================
-    # 步骤 7: 配置防火墙（开放 3000 端口）
+    # 步骤 8: 配置防火墙（开放 3000 端口）
     # ============================================
-    log_info "步骤 7: 配置防火墙（开放 3000 端口）"
+    log_info "步骤 8: 配置防火墙（开放 3000 端口）"
     echo "----------------------------------------"
     
     # 检查防火墙类型
@@ -536,321 +673,9 @@ EOF
     echo ""
     
     # ============================================
-    # 步骤 8: 安装 MongoDB（可选）
+    # 步骤 9: 验证部署
     # ============================================
-    log_info "步骤 8: 安装 MongoDB（可选）"
-    echo "----------------------------------------"
-    
-    # 询问是否安装 MongoDB
-    log_warning "是否需要安装 MongoDB？(y/n)"
-    log_info "如果应用不需要数据库，可以输入 n 跳过"
-    read -t 30 INSTALL_MONGO
-    
-    if [ "$INSTALL_MONGO" = "y" ] || [ "$INSTALL_MONGO" = "Y" ]; then
-        # 检查 MongoDB 是否已安装
-        if command -v mongod &> /dev/null; then
-            MONGO_VERSION=$(mongod --version | grep -oP 'db version v[0-9.]*')
-            log_warning "MongoDB 已安装，版本: $MONGO_VERSION"
-        else
-            log_info "正在安装 MongoDB..."
-            
-            # 检测系统版本
-            if [ -f /etc/redhat-release ]; then
-                OS_RELEASE=$(cat /etc/redhat-release)
-                log_info "检测到系统: $OS_RELEASE"
-                
-                # CentOS Stream 9 检测
-                if echo "$OS_RELEASE" | grep -q "Stream 9"; then
-                    log_info "检测到 CentOS Stream 9，将安装 MongoDB 6.0/5.0"
-                    
-                    # 方法 1: 尝试 MongoDB 6.0（CentOS Stream 9 推荐）
-                    log_info "尝试方法 1: 安装 MongoDB 6.0（CentOS Stream 9）..."
-                    
-                    cat > /etc/yum.repos.d/mongodb-org-6.0.repo << 'EOF'
-[mongodb-org-6.0]
-name=MongoDB Repository
-baseurl=https://repo.mongodb.org/yum/redhat/9/mongodb-org/6.0/x86_64/
-gpgcheck=1
-enabled=1
-gpgkey=https://www.mongodb.org/static/pgp/server-6.0.asc
-EOF
-                    
-                    yum clean all
-                    yum install -y mongodb-org --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0
-                    
-                    if [ $? -eq 0 ] && command -v mongod &> /dev/null; then
-                        MONGO_VERSION=$(mongod --version | grep -oP 'db version v[0-9.]*')
-                        log_success "MongoDB 安装成功，版本: $MONGO_VERSION"
-                        DEPLOYMENT_RESULTS[MongoDB安装]="成功"
-                    else
-                        log_warning "MongoDB 6.0 安装失败，尝试方法 2..."
-                        
-                        # 方法 2: 尝试 MongoDB 5.0（CentOS Stream 9 备选）
-                        log_info "尝试方法 2: 安装 MongoDB 5.0（CentOS Stream 9）..."
-                        
-                        cat > /etc/yum.repos.d/mongodb-org-5.0.repo << 'EOF'
-[mongodb-org-5.0]
-name=MongoDB Repository
-baseurl=https://repo.mongodb.org/yum/redhat/9/mongodb-org/5.0/x86_64/
-gpgcheck=1
-enabled=1
-gpgkey=https://www.mongodb.org/static/pgp/server-5.0.asc
-EOF
-                        
-                        yum clean all
-                        yum install -y mongodb-org --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0
-                        
-                        if [ $? -eq 0 ] && command -v mongod &> /dev/null; then
-                            MONGO_VERSION=$(mongod --version | grep -oP 'db version v[0-9.]*')
-                            log_success "MongoDB 安装成功，版本: $MONGO_VERSION"
-                            DEPLOYMENT_RESULTS[MongoDB安装]="成功"
-                        else
-                            log_warning "MongoDB 5.0 安装失败，尝试方法 3..."
-                            
-                            # 方法 3: 尝试 MongoDB 4.4（可能不兼容）
-                            log_info "尝试方法 3: 安装 MongoDB 4.4（可能不兼容 CentOS Stream 9）..."
-                            
-                            cat > /etc/yum.repos.d/mongodb-org-4.4.repo << 'EOF'
-[mongodb-org-4.4]
-name=MongoDB Repository
-baseurl=https://repo.mongodb.org/yum/redhat/$releasever/mongodb-org/4.4/x86_64/
-gpgcheck=1
-enabled=1
-gpgkey=https://www.mongodb.org/static/pgp/server-4.4.asc
-EOF
-                            
-                            yum clean all
-                            yum install -y mongodb-org --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0
-                            
-                            if [ $? -eq 0 ] && command -v mongod &> /dev/null; then
-                                MONGO_VERSION=$(mongod --version | grep -oP 'db version v[0-9.]*')
-                                log_success "MongoDB 安装成功，版本: $MONGO_VERSION"
-                                DEPLOYMENT_RESULTS[MongoDB安装]="成功"
-                            else
-                                log_error "MongoDB 安装失败，CentOS Stream 9 需要至少 MongoDB 5.0"
-                                log_error "建议使用 Docker 运行 MongoDB"
-                                log_warning "跳过 MongoDB 安装并继续部署？(y/n)"
-                                read -t 30 SKIP_MONGO
-                                
-                                if [ "$SKIP_MONGO" = "y" ] || [ "$SKIP_MONGO" = "Y" ]; then
-                                    log_warning "跳过 MongoDB 安装"
-                                    DEPLOYMENT_RESULTS[MongoDB安装]="跳过"
-                                else
-                                    DEPLOYMENT_RESULTS[MongoDB安装]="失败"
-                                    exit 1
-                                fi
-                            fi
-                        fi
-                    fi
-                    
-                # CentOS Stream 8 或其他版本
-                else
-                    log_info "检测到 CentOS Stream 8 或其他版本，尝试安装 MongoDB 4.4/4.2/3.6..."
-                    
-                    # 方法 1: 尝试 MongoDB 4.4
-                    log_info "尝试方法 1: 安装 MongoDB 4.4..."
-                    
-                    cat > /etc/yum.repos.d/mongodb-org-4.4.repo << 'EOF'
-[mongodb-org-4.4]
-name=MongoDB Repository
-baseurl=https://repo.mongodb.org/yum/redhat/$releasever/mongodb-org/4.4/x86_64/
-gpgcheck=1
-enabled=1
-gpgkey=https://www.mongodb.org/static/pgp/server-4.4.asc
-EOF
-                    
-                    yum clean all
-                    yum install -y mongodb-org --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0
-                    
-                    if [ $? -eq 0 ] && command -v mongod &> /dev/null; then
-                        MONGO_VERSION=$(mongod --version | grep -oP 'db version v[0-9.]*')
-                        log_success "MongoDB 安装成功，版本: $MONGO_VERSION"
-                        DEPLOYMENT_RESULTS[MongoDB安装]="成功"
-                    else
-                        log_warning "MongoDB 4.4 安装失败，尝试方法 2..."
-                        
-                        # 方法 2: 尝试 MongoDB 4.2
-                        log_info "尝试方法 2: 安装 MongoDB 4.2..."
-                        
-                        cat > /etc/yum.repos.d/mongodb-org-4.2.repo << 'EOF'
-[mongodb-org-4.2]
-name=MongoDB Repository
-baseurl=https://repo.mongodb.org/yum/redhat/$releasever/mongodb-org/4.2/x86_64/
-gpgcheck=1
-enabled=1
-gpgkey=https://www.mongodb.org/static/pgp/server-4.2.asc
-EOF
-                        
-                        yum clean all
-                        yum install -y mongodb-org --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0
-                        
-                        if [ $? -eq 0 ] && command -v mongod &> /dev/null; then
-                            MONGO_VERSION=$(mongod --version | grep -oP 'db version v[0-9.]*')
-                            log_success "MongoDB 安装成功，版本: $MONGO_VERSION"
-                            DEPLOYMENT_RESULTS[MongoDB安装]="成功"
-                        else
-                            log_warning "MongoDB 4.2 安装失败，尝试方法 3..."
-                            
-                            # 方法 3: 尝试 MongoDB 3.6
-                            log_info "尝试方法 3: 安装 MongoDB 3.6..."
-                            
-                            cat > /etc/yum.repos.d/mongodb-org-3.6.repo << 'EOF'
-[mongodb-org-3.6]
-name=MongoDB Repository
-baseurl=https://repo.mongodb.org/yum/redhat/$releasever/mongodb-org/3.6/x86_64/
-gpgcheck=1
-enabled=1
-gpgkey=https://www.mongodb.org/static/pgp/server-3.6.asc
-EOF
-                            
-                            yum clean all
-                            yum install -y mongodb-org --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0
-                            
-                            if [ $? -eq 0 ] && command -v mongod &> /dev/null; then
-                                MONGO_VERSION=$(mongod --version | grep -oP 'db version v[0-9.]*')
-                                log_success "MongoDB 安装成功，版本: $MONGO_VERSION"
-                                DEPLOYMENT_RESULTS[MongoDB安装]="成功"
-                            else
-                                log_warning "MongoDB 3.6 安装失败，尝试方法 4..."
-                                
-                                # 方法 4: 使用 EPEL 仓库
-                                log_info "尝试方法 4: 使用 EPEL 仓库安装 MongoDB..."
-                                
-                                yum install -y epel-release --setopt=install_weak_deps=False --setopt=tsflags=nodocs
-                                yum install -y mongodb --setopt=install_weak_deps=False --setopt=tsflags=nodocs --setopt=strict=0
-                                
-                                if [ $? -eq 0 ] && command -v mongod &> /dev/null; then
-                                    MONGO_VERSION=$(mongod --version | grep -oP 'db version v[0-9.]*')
-                                    log_success "MongoDB 安装成功，版本: $MONGO_VERSION"
-                                    DEPLOYMENT_RESULTS[MongoDB安装]="成功"
-                                else
-                                    log_error "MongoDB 安装失败，所有方法都失败了"
-                                    log_error "可能的原因:"
-                                    log_error "  1. 内存不足（建议至少 2GB）"
-                                    log_error "  2. CentOS 版本不支持 MongoDB 4.4/4.2/3.6"
-                                    log_error "  3. 网络连接问题"
-                                    log_error "  4. yum 仓库配置问题"
-                                    log_error ""
-                                    log_warning "跳过 MongoDB 安装并继续部署？(y/n)"
-                                    read -t 30 SKIP_MONGO
-                                    
-                                    if [ "$SKIP_MONGO" = "y" ] || [ "$SKIP_MONGO" = "Y" ]; then
-                                        log_warning "跳过 MongoDB 安装"
-                                        DEPLOYMENT_RESULTS[MongoDB安装]="跳过"
-                                    else
-                                        DEPLOYMENT_RESULTS[MongoDB安装]="失败"
-                                        exit 1
-                                    fi
-                                fi
-                            fi
-                        fi
-                    fi
-                fi
-            else
-                log_error "无法检测系统版本"
-                DEPLOYMENT_RESULTS[MongoDB安装]="失败"
-                exit 1
-            fi
-        fi
-        
-        echo ""
-        
-        # ============================================
-        # 步骤 9: 配置 MongoDB（如果已安装）
-        # ============================================
-        if command -v mongod &> /dev/null; then
-            log_info "步骤 9: 配置 MongoDB"
-            echo "----------------------------------------"
-            
-            # 创建数据目录
-            log_info "创建 MongoDB 数据目录..."
-            mkdir -p /data/db
-            chown -R mongod:mongod /data/db
-            
-            # 创建日志目录
-            log_info "创建 MongoDB 日志目录..."
-            mkdir -p /var/log/mongodb
-            chown -R mongod:mongod /var/log/mongodb
-            
-            # 创建配置文件
-            log_info "创建 MongoDB 配置文件..."
-            cat > /etc/mongod.conf << 'EOF'
-# mongod.conf
-
-# 网络配置
-net:
-  port: 27017
-  bindIp: 127.0.0.1
-
-# 数据存储
-storage:
-  dbPath: /data/db
-  journal:
-    enabled: true
-
-# 日志
-systemLog:
-  destination: file
-  logAppend: true
-  path: /var/log/mongodb/mongod.log
-
-# 安全
-security:
-  authorization: enabled
-EOF
-            
-            # 启动 MongoDB
-            log_info "启动 MongoDB..."
-            systemctl start mongod
-            systemctl enable mongod
-            
-            if wait_for_service mongod; then
-                DEPLOYMENT_RESULTS[MongoDB配置]="成功"
-                log_success "MongoDB 配置完成"
-            else
-                log_error "MongoDB 启动失败"
-                DEPLOYMENT_RESULTS[MongoDB配置]="失败"
-                exit 1
-            fi
-            
-            echo ""
-            
-            # ============================================
-            # 步骤 10: 创建 MongoDB 用户
-            # ============================================
-            log_info "步骤 10: 创建 MongoDB 用户"
-            echo "----------------------------------------"
-            
-            # 等待 MongoDB 完全启动
-            sleep 3
-            
-            # 创建管理员用户
-            log_info "创建管理员用户..."
-            mongo admin --eval 'db.createUser({user: "admin", pwd: "admin123", roles: ["userAdminAnyDatabase", "dbAdminAnyDatabase", "readWriteAnyDatabase"]})' 2>/dev/null || true
-            
-            # 创建应用数据库用户
-            log_info "创建应用数据库用户..."
-            mongo price --eval 'db.createUser({user: "price", pwd: "Liuyuyi1989", roles: ["readWrite"]})' 2>/dev/null || true
-            
-            log_success "MongoDB 用户创建完成"
-            DEPLOYMENT_RESULTS[MongoDB用户]="成功"
-            
-            echo ""
-        else
-            log_warning "MongoDB 未安装，跳过配置步骤"
-            DEPLOYMENT_RESULTS[MongoDB配置]="跳过"
-            echo ""
-        fi
-    else
-        log_warning "跳过 MongoDB 安装"
-        DEPLOYMENT_RESULTS[MongoDB安装]="跳过"
-        echo ""
-    fi
-    
-    # ============================================
-    # 步骤 11: 验证部署
-    # ============================================
-    log_info "步骤 11: 验证部署"
+    log_info "步骤 9: 验证部署"
     echo "----------------------------------------"
     
     # 验证 NVM
@@ -877,6 +702,18 @@ EOF
         log_error "PM2 未安装"
     fi
     
+    # 验证 MySQL
+    log_info "验证 MySQL..."
+    if command -v mysql &> /dev/null; then
+        if check_service mysqld 2>/dev/null || check_service mariadb 2>/dev/null; then
+            log_success "MySQL 服务正在运行"
+        else
+            log_error "MySQL 服务未运行"
+        fi
+    else
+        log_error "MySQL 未安装"
+    fi
+    
     # 验证应用
     log_info "验证应用..."
     if check_port 3000; then
@@ -887,13 +724,7 @@ EOF
     
     # 验证防火墙
     log_info "验证防火墙..."
-    if command -v firewall-cmd &> /dev/null; then
-        if firewall-cmd --list-ports | grep -q "3000/tcp"; then
-            log_success "防火墙已开放 3000 端口"
-        else
-            log_warning "防火墙未开放 3000 端口"
-        fi
-    elif command -v iptables &> /dev/null; then
+    if command -v iptables &> /dev/null; then
         if iptables -L -n | grep -q "dpt:3000"; then
             log_success "防火墙已开放 3000 端口"
         else
@@ -901,22 +732,12 @@ EOF
         fi
     fi
     
-    # 验证 MongoDB（如果已安装）
-    if command -v mongod &> /dev/null; then
-        log_info "验证 MongoDB..."
-        if check_service mongod; then
-            log_success "MongoDB 服务正在运行"
-        else
-            log_error "MongoDB 服务未运行"
-        fi
-    fi
-    
     echo ""
     
     # ============================================
-    # 步骤 12: 生成部署报告
+    # 步骤 10: 生成部署报告
     # ============================================
-    log_info "步骤 12: 生成部署报告"
+    log_info "步骤 10: 生成部署报告"
     echo "----------------------------------------"
     
     # 计算部署时间
@@ -949,7 +770,7 @@ NVM: $(command -v nvm &> /dev/null && nvm --version || echo "未安装")
 Node.js: $(command -v node &> /dev/null && node -v || echo "未安装")
 NPM: $(command -v npm &> /dev/null && npm -v || echo "未安装")
 PM2: $(command -v pm2 &> /dev/null && pm2 -v || echo "未安装")
-MongoDB: $(command -v mongod &> /dev/null && mongod --version | head -1 || echo "未安装")
+MySQL: $(command -v mysql &> /dev/null && mysql --version | head -1 || echo "未安装")
 
 ==========================================
 应用信息
@@ -965,7 +786,7 @@ $(pm2 list 2>/dev/null || echo "无进程")
 
 应用访问地址: http://$SERVER_IP:3000
 监听端口: 3000
-防火墙状态: $(command -v firewall-cmd &> /dev/null && firewall-cmd --list-ports | grep -q "3000/tcp" && echo "已开放" || echo "未开放")
+防火墙状态: $(command -v iptables &> /dev/null && iptables -L -n | grep -q "dpt:3000" && echo "已开放" || echo "未开放")
 
 ==========================================
 部署结果
@@ -995,11 +816,9 @@ EOF
     echo "✓ NVM 安装完成"
     echo "✓ Node.js 14.21.3 安装完成"
     echo "✓ PM2 安装完成"
+    echo "✓ MySQL 安装完成"
     echo "✓ 应用部署完成"
     echo "✓ 防火墙配置完成（3000 端口）"
-    if command -v mongod &> /dev/null; then
-        echo "✓ MongoDB 安装完成"
-    fi
     echo ""
     echo "应用访问地址:"
     echo "  http://$SERVER_IP:3000"
@@ -1014,6 +833,7 @@ EOF
     echo "3. PM2 管理应用: pm2 list, pm2 logs, pm2 restart"
     echo "4. 查看 PM2 进程: pm2 list"
     echo "5. 查看应用日志: pm2 logs"
+    echo "6. MySQL 数据库: root/Liuyuyi1989, price/Liuyuyi1989"
     echo ""
 }
 
