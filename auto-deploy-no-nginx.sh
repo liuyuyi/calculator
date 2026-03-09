@@ -400,10 +400,15 @@ EOF
     else
         log_info "应用目录存在: $APP_DIR"
         
+        # 清理可能存在的旧版本 undici
+        log_info "清理可能存在的旧版本依赖..."
+        cd $APP_DIR
+        npm uninstall undici 2>/dev/null || true
+        
         # 安装应用依赖
         log_info "安装应用依赖..."
         cd $APP_DIR
-        npm install mysql2 express cheerio nodemailer node-schedule puppeteer
+        npm install mysql2 express cheerio nodemailer node-schedule puppeteer undici@4.16.3 --legacy-peer-deps
         
         if [ $? -eq 0 ]; then
             log_success "应用依赖安装成功"
