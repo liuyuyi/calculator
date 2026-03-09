@@ -270,30 +270,11 @@ EOF
         rm -rf /var/lib/mysql 2>/dev/null || true
         rm -rf /etc/my.cnf 2>/dev/null || true
         
-        # 安装 MySQL 8.0
-        log_info "安装 MySQL 8.0..."
+        # 优先尝试 MySQL 5.7（兼容性更好）
+        log_info "尝试安装 MySQL 5.7（兼容性更好）..."
         
-        # 配置 MySQL 8.0 仓库
+        # 配置 MySQL 5.7 仓库
         cat > /etc/yum.repos.d/mysql-community.repo << 'EOF'
-[mysql80-community]
-name=MySQL 8.0 Community Server
-baseurl=https://repo.mysql.com/yum/mysql-8.0-community/el/7/$basearch/
-enabled=1
-gpgcheck=1
-gpgkey=https://repo.mysql.com/RPM-GPG-KEY-mysql
-EOF
-        
-        # 安装 MySQL
-        yum install -y mysql-community-server --setopt=install_weak_deps=False --setopt=tsflags=nodocs
-        
-        if [ $? -eq 0 ]; then
-            log_success "MySQL 安装成功"
-            DEPLOYMENT_RESULTS[MySQL安装]="成功"
-        else
-            log_warning "MySQL 8.0 安装失败，尝试 MySQL 5.7..."
-            
-            # 配置 MySQL 5.7 仓库
-            cat > /etc/yum.repos.d/mysql-community.repo << 'EOF'
 [mysql57-community]
 name=MySQL 5.7 Community Server
 baseurl=https://repo.mysql.com/yum/mysql-5.7-community/el/7/$basearch/
@@ -301,13 +282,36 @@ enabled=1
 gpgcheck=1
 gpgkey=https://repo.mysql.com/RPM-GPG-KEY-mysql
 EOF
+        
+        # 安装 MySQL 5.7
+        yum install -y mysql-community-server --setopt=install_weak_deps=False --setopt=tsflags=nodocs
+        
+        if [ $? -eq 0 ]; then
+            log_success "MySQL 5.7 安装成功"
+            DEPLOYMENT_RESULTS[MySQL安装]="成功（MySQL 5.7）"
+        else
+            log_warning "MySQL 5.7 安装失败，尝试 MySQL 8.0..."
             
-            # 安装 MySQL 5.7
+            # 安装 OpenSSL 兼容库（MySQL 8.0 需要）
+            log_info "安装 OpenSSL 兼容库..."
+            yum install -y compat-openssl10 --setopt=install_weak_deps=False --setopt=tsflags=nodocs 2>/dev/null || true
+            
+            # 配置 MySQL 8.0 仓库
+            cat > /etc/yum.repos.d/mysql-community.repo << 'EOF'
+[mysql80-community]
+name=MySQL 8.0 Community Server
+baseurl=https://repo.mysql.com/yum/mysql-8.0-community/el/7/$basearch/
+enabled=1
+gpgcheck=1
+gpgkey=https://repo.mysql.com/RPM-GPG-KEY-mysql
+EOF
+            
+            # 安装 MySQL 8.0
             yum install -y mysql-community-server --setopt=install_weak_deps=False --setopt=tsflags=nodocs
             
             if [ $? -eq 0 ]; then
-                log_success "MySQL 5.7 安装成功"
-                DEPLOYMENT_RESULTS[MySQL安装]="成功"
+                log_success "MySQL 8.0 安装成功"
+                DEPLOYMENT_RESULTS[MySQL安装]="成功（MySQL 8.0）"
             else
                 log_error "MySQL 安装失败"
                 log_warning "尝试使用 MariaDB 作为替代..."
@@ -344,25 +348,33 @@ EOF
     # 配置 MySQL
     log_info "配置 MySQL..."
     
-    # 获取临时密码（MySQL 8.0）
+    # 获取临时密码（MySQL 5.7 和 8.0）
     if command -v mysql &> /dev/null; then
         TEMP_PASS=$(grep 'temporary password' /var/log/mysqld.log 2>/dev/null | tail -1 | awk '{print $NF}')
         
         if [ -n "$TEMP_PASS" ]; then
-            # 重置密码
+            # 重置密码（MySQL 5.7 和 8.0）
             log_info "重置 MySQL 密码..."
             mysql -u root -p"$TEMP_PASS" --connect-expired-password -e "ALTER USER 'root'@'localhost' IDENTIFIED BY 'Liuyuyi1989';" 2>/dev/null || true
         else
-            # 尝试无密码登录（MariaDB）
-            mysql -u root -e "SET PASSWORD FOR 'root'@'localhost' = PASSWORD('Liuyuyi1989');" 2>/dev/null || true
+            # 尝试无密码登录（MariaDB 或已配置的 MySQL）
+            mysql -u root -e "SET PASSWORD FOR 'root'@'localhost' = PASSWORD('Liuyuyi1989');" 2>/dev/null || \
+            mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY 'Liuyuyi1989';" 2>/dev/null || true
         fi
         
         # 创建数据库和用户
         log_info "创建数据库和用户..."
-        mysql -u root -p'Liuyuyi1989' -e "CREATE DATABASE IF NOT EXISTS price_db;"
-        mysql -u root -p'Liuyuyi1989' -e "CREATE USER IF NOT EXISTS 'price'@'localhost' IDENTIFIED BY 'Liuyuyi1989';"
-        mysql -u root -p'Liuyuyi1989' -e "GRANT ALL PRIVILEGES ON price_db.* TO 'price'@'localhost';"
-        mysql -u root -p'Liuyuyi1989' -e "FLUSH PRIVILEGES;"
+        mysql -u root -p'Liuyuyi1989' -e "CREATE DATABASE IF NOT EXISTS price_db;" 2>/dev/null || \
+        mysql -u root -p'Liuyuyi1989' --connect-expired-password -e "CREATE DATABASE IF NOT EXISTS price_db;" 2>/dev/null || true
+        
+        mysql -u root -p'Liuyuyi1989' -e "CREATE USER IF NOT EXISTS 'price'@'localhost' IDENTIFIED BY 'Liuyuyi1989';" 2>/dev/null || \
+        mysql -u root -p'Liuyuyi1989' --connect-expired-password -e "CREATE USER IF NOT EXISTS 'price'@'localhost' IDENTIFIED BY 'Liuyuyi1989';" 2>/dev/null || true
+        
+        mysql -u root -p'Liuyuyi1989' -e "GRANT ALL PRIVILEGES ON price_db.* TO 'price'@'localhost';" 2>/dev/null || \
+        mysql -u root -p'Liuyuyi1989' --connect-expired-password -e "GRANT ALL PRIVILEGES ON price_db.* TO 'price'@'localhost';" 2>/dev/null || true
+        
+        mysql -u root -p'Liuyuyi1989' -e "FLUSH PRIVILEGES;" 2>/dev/null || \
+        mysql -u root -p'Liuyuyi1989' --connect-expired-password -e "FLUSH PRIVILEGES;" 2>/dev/null || true
         
         log_success "MySQL 配置完成"
         DEPLOYMENT_RESULTS[MySQL配置]="成功"

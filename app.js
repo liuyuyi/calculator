@@ -122,7 +122,10 @@ const mysqlConfig = {
   database: 'price_db',
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 0,
+  charset: 'utf8mb4',
+  timezone: '+08:00',
+  multipleStatements: false
 };
 
 // 创建数据库连接池
@@ -133,36 +136,41 @@ async function initDatabase() {
   try {
     const connection = await pool.getConnection();
     
-    // 创建数据库（如果不存在）
-    await connection.query('CREATE DATABASE IF NOT EXISTS price_db');
-    await connection.query('USE price_db');
-    
-    // 创建铜价格表
-    await connection.query(`
-      CREATE TABLE IF NOT EXISTS coppers (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        type INT,
-        price DOUBLE,
-        upDateTime VARCHAR(50),
-        creatDate BIGINT,
-        UNIQUE KEY unique_updatetime (upDateTime)
-      )
-    `);
-    
-    // 创建铝价格表
-    await connection.query(`
-      CREATE TABLE IF NOT EXISTS aluminums (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        type INT,
-        price DOUBLE,
-        upDateTime VARCHAR(50),
-        creatDate BIGINT,
-        UNIQUE KEY unique_updatetime (upDateTime)
-      )
-    `);
-    
-    connection.release();
-    console.log('数据库初始化成功');
+    try {
+      // 创建数据库（如果不存在）
+      await connection.query('CREATE DATABASE IF NOT EXISTS price_db DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+      await connection.query('USE price_db');
+      
+      // 创建铜价格表
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS coppers (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          type INT,
+          price DOUBLE,
+          upDateTime VARCHAR(50),
+          creatDate BIGINT,
+          UNIQUE KEY unique_updatetime (upDateTime),
+          KEY idx_creatdate (creatDate)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      
+      // 创建铝价格表
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS aluminums (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          type INT,
+          price DOUBLE,
+          upDateTime VARCHAR(50),
+          creatDate BIGINT,
+          UNIQUE KEY unique_updatetime (upDateTime),
+          KEY idx_creatdate (creatDate)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      
+      console.log('数据库初始化成功');
+    } finally {
+      connection.release();
+    }
   } catch (error) {
     console.error('数据库初始化失败:', error);
   }
