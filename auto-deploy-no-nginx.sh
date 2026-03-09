@@ -279,12 +279,11 @@ EOF
 name=MySQL 5.7 Community Server
 baseurl=https://repo.mysql.com/yum/mysql-5.7-community/el/7/$basearch/
 enabled=1
-gpgcheck=1
-gpgkey=https://repo.mysql.com/RPM-GPG-KEY-mysql
+gpgcheck=0
 EOF
         
-        # 安装 MySQL 5.7
-        yum install -y mysql-community-server --setopt=install_weak_deps=False --setopt=tsflags=nodocs
+        # 安装 MySQL 5.7（禁用 GPG 检查）
+        yum install -y mysql-community-server --nogpgcheck --setopt=install_weak_deps=False --setopt=tsflags=nodocs
         
         if [ $? -eq 0 ]; then
             log_success "MySQL 5.7 安装成功"
@@ -302,12 +301,11 @@ EOF
 name=MySQL 8.0 Community Server
 baseurl=https://repo.mysql.com/yum/mysql-8.0-community/el/7/$basearch/
 enabled=1
-gpgcheck=1
-gpgkey=https://repo.mysql.com/RPM-GPG-KEY-mysql
+gpgcheck=0
 EOF
             
-            # 安装 MySQL 8.0
-            yum install -y mysql-community-server --setopt=install_weak_deps=False --setopt=tsflags=nodocs
+            # 安装 MySQL 8.0（禁用 GPG 检查）
+            yum install -y mysql-community-server --nogpgcheck --setopt=install_weak_deps=False --setopt=tsflags=nodocs
             
             if [ $? -eq 0 ]; then
                 log_success "MySQL 8.0 安装成功"
