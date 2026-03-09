@@ -136,6 +136,11 @@ echo "✓ Nginx 安装完成"
 
 # 7. 安装 MongoDB
 echo "[7/8] 安装 MongoDB..."
+
+# 清理失效的 MongoDB 仓库配置
+rm -f /etc/yum.repos.d/mongodb*.repo 2>/dev/null || true
+rm -f /etc/yum.repos.d/mongodb-org*.repo 2>/dev/null || true
+
 cat > /etc/yum.repos.d/mongodb-org-4.4.repo << 'EOF'
 [mongodb-org-4.4]
 name=MongoDB Repository

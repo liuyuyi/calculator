@@ -260,6 +260,11 @@ EOF
     else
         log_info "正在安装 MySQL..."
         
+        # 清理失效的 MongoDB 仓库配置
+        log_info "清理失效的 MongoDB 仓库配置..."
+        rm -f /etc/yum.repos.d/mongodb*.repo 2>/dev/null || true
+        rm -f /etc/yum.repos.d/mongodb-org*.repo 2>/dev/null || true
+        
         # 清理现有 MySQL 相关包
         yum remove -y mysql mysql-server mysql-libs mysql-common 2>/dev/null || true
         rm -rf /var/lib/mysql 2>/dev/null || true

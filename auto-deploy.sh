@@ -563,6 +563,11 @@ EOF
     else
         log_info "正在安装 MongoDB..."
         
+        # 清理失效的 MongoDB 仓库配置
+        log_info "清理失效的 MongoDB 仓库配置..."
+        rm -f /etc/yum.repos.d/mongodb*.repo 2>/dev/null || true
+        rm -f /etc/yum.repos.d/mongodb-org*.repo 2>/dev/null || true
+        
         # 方法 1: 尝试 MongoDB 4.4
         log_info "尝试方法 1: 安装 MongoDB 4.4..."
         
