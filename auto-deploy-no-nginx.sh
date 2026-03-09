@@ -408,7 +408,7 @@ EOF
         # 安装应用依赖
         log_info "安装应用依赖..."
         cd $APP_DIR
-        npm install mysql2 express cheerio nodemailer node-schedule puppeteer undici@4.16.3 --legacy-peer-deps
+        npm install mysql2 express cheerio nodemailer node-schedule puppeteer undici@4.15.0 --legacy-peer-deps
         
         if [ $? -eq 0 ]; then
             log_success "应用依赖安装成功"
