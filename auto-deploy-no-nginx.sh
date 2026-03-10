@@ -249,9 +249,63 @@ EOF
     echo ""
     
     # ============================================
-    # 步骤 5: 安装 MySQL
+    # 步骤 5: 检查内存并创建 swap（如果需要）
     # ============================================
-    log_info "步骤 5: 安装 MySQL"
+    log_info "步骤 5: 检查内存并创建 swap（如果需要）"
+    echo "----------------------------------------"
+    
+    # 检查可用内存
+    AVAILABLE_MEM=$(free -m | awk '/^Mem:/{print $7}')
+    log_info "可用内存: ${AVAILABLE_MEM}MB"
+    
+    # 检查是否已有 swap
+    TOTAL_SWAP=$(free -m | awk '/^Swap:/{print $2}')
+    log_info "当前 Swap: ${TOTAL_SWAP}MB"
+    
+    # 如果可用内存小于 512MB 或没有 swap，创建 swap
+    if [ $AVAILABLE_MEM -lt 512 ] || [ $TOTAL_SWAP -eq 0 ]; then
+        log_warning "内存不足，正在创建 2GB swap 文件..."
+        
+        # 清理现有 swap 文件（如果存在）
+        swapoff /swapfile 2>/dev/null || true
+        rm -f /swapfile 2>/dev/null || true
+        
+        # 创建 2GB swap 文件
+        dd if=/dev/zero of=/swapfile bs=1M count=2048 status=progress
+        
+        # 设置权限
+        chmod 600 /swapfile
+        
+        # 创建 swap
+        mkswap /swapfile
+        
+        # 启用 swap
+        swapon /swapfile
+        
+        # 添加到 fstab（开机自动挂载）
+        echo '/swapfile none swap sw 0 0' >> /etc/fstab
+        
+        # 优化 swap 使用
+        sysctl vm.swappiness=10
+        echo 'vm.swappiness=10' >> /etc/sysctl.conf
+        
+        log_success "Swap 文件创建完成"
+        DEPLOYMENT_RESULTS[Swap创建]="成功"
+    else
+        log_info "内存充足且已有 swap，跳过 swap 创建"
+        DEPLOYMENT_RESULTS[Swap创建]="跳过"
+    fi
+    
+    # 显示新的内存状态
+    log_info "当前内存状态:"
+    free -h
+    
+    echo ""
+    
+    # ============================================
+    # 步骤 6: 安装 MySQL
+    # ============================================
+    log_info "步骤 6: 安装 MySQL"
     echo "----------------------------------------"
     
     # 检查 MySQL 是否已安装
@@ -385,9 +439,9 @@ EOF
     echo ""
     
     # ============================================
-    # 步骤 6: 部署应用
+    # 步骤 7: 部署应用
     # ============================================
-    log_info "步骤 6: 部署应用"
+    log_info "步骤 7: 部署应用"
     echo "----------------------------------------"
     
     # 检查应用目录
@@ -514,56 +568,6 @@ EOF
     # 检查 PM2 进程状态
     log_info "PM2 进程列表:"
     pm2 list
-    
-    echo ""
-    
-    # ============================================
-    # 步骤 7: 检查内存并创建 swap（如果需要）
-    # ============================================
-    log_info "步骤 7: 检查内存并创建 swap（如果需要）"
-    echo "----------------------------------------"
-    
-    # 检查可用内存
-    AVAILABLE_MEM=$(free -m | awk '/^Mem:/{print $7}')
-    log_info "可用内存: ${AVAILABLE_MEM}MB"
-    
-    # 检查是否已有 swap
-    TOTAL_SWAP=$(free -m | awk '/^Swap:/{print $2}')
-    log_info "当前 Swap: ${TOTAL_SWAP}MB"
-    
-    # 如果可用内存小于 512MB 且没有 swap，创建 swap
-    if [ $AVAILABLE_MEM -lt 512 ] && [ $TOTAL_SWAP -eq 0 ]; then
-        log_warning "内存不足，正在创建 2GB swap 文件..."
-        
-        # 创建 2GB swap 文件
-        dd if=/dev/zero of=/swapfile bs=1M count=2048 status=progress
-        
-        # 设置权限
-        chmod 600 /swapfile
-        
-        # 创建 swap
-        mkswap /swapfile
-        
-        # 启用 swap
-        swapon /swapfile
-        
-        # 添加到 fstab（开机自动挂载）
-        echo '/swapfile none swap sw 0 0' >> /etc/fstab
-        
-        # 优化 swap 使用
-        sysctl vm.swappiness=10
-        echo 'vm.swappiness=10' >> /etc/sysctl.conf
-        
-        log_success "Swap 文件创建完成"
-        DEPLOYMENT_RESULTS[Swap创建]="成功"
-    else
-        log_info "内存充足或已有 swap，跳过 swap 创建"
-        DEPLOYMENT_RESULTS[Swap创建]="跳过"
-    fi
-    
-    # 显示新的内存状态
-    log_info "当前内存状态:"
-    free -h
     
     echo ""
     
