@@ -5,7 +5,6 @@ const fs = require("fs");
 const cheerio = require("cheerio");
 const nodemailer = require("nodemailer");
 const schedule = require("node-schedule");
-const mysql = require("mysql2/promise");
 const targetUrl = "https://m.cnal.com/market/changjiang/";
 const puppeteer = require("puppeteer");
 
@@ -114,67 +113,10 @@ const listData = [
     }
 ];
 
-// MySQL 连接配置
-const mysqlConfig = {
-  host: 'localhost',
-  user: 'root',
-  password: 'Liuyuyi1989',
-  database: 'price_db',
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-  charset: 'utf8mb4',
-  timezone: '+08:00',
-  multipleStatements: false
-};
-
-// 创建数据库连接池
-const pool = mysql.createPool(mysqlConfig);
-
-// 初始化数据库
-async function initDatabase() {
-  try {
-    const connection = await pool.getConnection();
-    
-    try {
-      // 创建数据库（如果不存在）
-      await connection.query('CREATE DATABASE IF NOT EXISTS price_db DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
-      await connection.query('USE price_db');
-      
-      // 创建铜价格表
-      await connection.query(`
-        CREATE TABLE IF NOT EXISTS coppers (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          type INT,
-          price DOUBLE,
-          upDateTime VARCHAR(50),
-          creatDate BIGINT,
-          UNIQUE KEY unique_updatetime (upDateTime),
-          KEY idx_creatdate (creatDate)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-      `);
-      
-      // 创建铝价格表
-      await connection.query(`
-        CREATE TABLE IF NOT EXISTS aluminums (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          type INT,
-          price DOUBLE,
-          upDateTime VARCHAR(50),
-          creatDate BIGINT,
-          UNIQUE KEY unique_updatetime (upDateTime),
-          KEY idx_creatdate (creatDate)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-      `);
-      
-      console.log('数据库初始化成功');
-    } finally {
-      connection.release();
-    }
-  } catch (error) {
-    console.error('数据库初始化失败:', error);
-  }
-}
+// 内存存储（模拟数据库）
+let copperData = [];
+let aluminumData = [];
+let idCounter = 1;
 
 // 定时器
 const Rule2 = new schedule.RecurrenceRule();
@@ -184,14 +126,11 @@ let repTime = 0;
 let nowCoPrice = 0;
 let nowAlPrice = 0;
 
-// 初始化数据库
-initDatabase();
-
 // 定时任务
 try {
-  schedule.scheduleJob(Rule2, () => {
+  // schedule.scheduleJob(Rule2, () => {
     getPage();
-  });
+  // });
 } catch (error) {
   console.error('定时任务配置错误:', error);
 }
@@ -370,35 +309,35 @@ function getPage() {
                       }
                   }
 
-                  // 铜价格保存
+                  // 铜价格保存到内存
                   try {
-                      const [copperExists] = await pool.query(
-                          'SELECT * FROM coppers WHERE upDateTime = ?',
-                          [priceData.upDateTime]
-                      );
+                      const copperExists = copperData.find(item => item.upDateTime === priceData.upDateTime);
                       
-                      if (copperExists.length === 0) {
-                          await pool.query(
-                              'INSERT INTO coppers (type, price, upDateTime, creatDate) VALUES (?, ?, ?, ?)',
-                              [copper.type, copper.price, priceData.upDateTime, priceData.creatDate]
-                          );
+                      if (!copperExists) {
+                          copperData.push({
+                              id: idCounter++,
+                              type: copper.type,
+                              price: copper.price,
+                              upDateTime: priceData.upDateTime,
+                              creatDate: priceData.creatDate
+                          });
                       }
                   } catch (error) {
                       console.error('保存铜价格失败:', error);
                   }
 
-                  // 铝价格保存
+                  // 铝价格保存到内存
                   try {
-                      const [aluminumExists] = await pool.query(
-                          'SELECT * FROM aluminums WHERE upDateTime = ?',
-                          [priceData.upDateTime]
-                      );
+                      const aluminumExists = aluminumData.find(item => item.upDateTime === priceData.upDateTime);
                       
-                      if (aluminumExists.length === 0) {
-                          await pool.query(
-                              'INSERT INTO aluminums (type, price, upDateTime, creatDate) VALUES (?, ?, ?, ?)',
-                              [aluminum.type, aluminum.price, priceData.upDateTime, priceData.creatDate]
-                          );
+                      if (!aluminumExists) {
+                          aluminumData.push({
+                              id: idCounter++,
+                              type: aluminum.type,
+                              price: aluminum.price,
+                              upDateTime: priceData.upDateTime,
+                              creatDate: priceData.creatDate
+                          });
                       }
                       
                       if (nowCoPrice === coPrice && nowAlPrice === alPrice) {
@@ -450,12 +389,11 @@ app.get('/', (req, res) => {
 app.get('/getPrice', async (req, res) => {
   try {
     // 获取最新的铜价格
-    const [copperResult] = await pool.query(
-      'SELECT * FROM coppers ORDER BY id DESC LIMIT 1'
-    );
+    copperData.sort((a, b) => b.id - a.id);
+    const copperResult = copperData[0];
     
-    if (copperResult.length > 0) {
-      res.end(JSON.stringify(copperResult[0]));
+    if (copperResult) {
+      res.end(JSON.stringify(copperResult));
     } else {
       res.end(JSON.stringify({}));
     }
@@ -473,24 +411,19 @@ app.get('/getPriceAll', async (req, res) => {
     const skip = (pageNo - 1) * num;
     
     // 获取总数
-    const [countResult] = await pool.query(
-      'SELECT COUNT(*) as total FROM coppers'
-    );
-    const total = countResult[0].total;
+    const total = copperData.length;
     const lastPageNum = Math.ceil(total / num);
     
-    // 获取数据
-    const [data] = await pool.query(
-      'SELECT * FROM coppers ORDER BY id DESC LIMIT ? OFFSET ?',
-      [num, skip]
-    );
+    // 获取数据（按id倒序）
+    const sortedData = [...copperData].sort((a, b) => b.id - a.id);
+    const data = sortedData.slice(skip, skip + num);
     
     const page = {
         page_no: pageNo + 1,
         page_size: num,
         total: total,
         lastPageNum: lastPageNum,
-        data: [...data]
+        data: data
     };
     
     res.end(JSON.stringify(page));
@@ -500,14 +433,16 @@ app.get('/getPriceAll', async (req, res) => {
   }
 });
 
-var server = app.listen(3000, () => {
+const PORT = process.env.PORT || process.env.port || 3000;
+
+var server = app.listen(PORT, () => {
     var host = server.address().address;
     var port = server.address().port;
-    console.log("应用实例，访问地址为 http://%s:%s", host, port);
+    var hostDisplay = host === '::' ? 'localhost' : host;
+    console.log("========================================");
+    console.log("应用已启动");
+    console.log("访问地址: http://%s:%s", hostDisplay, port);
+    console.log("使用端口: %d (环境变量 PORT)", port);
+    console.log("存储模式: 内存存储");
+    console.log("========================================");
 });
-
-// 截取网页生成图
-// #依赖库
-// yum install pango.x86_64 libXcomposite.x86_64 libXcursor.x86_64 libXdamage.x86_64 libXext.x86_64 libXi.x86_64 libXtst.x86_64 cups-libs.x86_64 libXScrnSaver.x86_64 libXrandr.x86_64 GConf2.x86_64 alsa-lib.x86_64 atk.x86_64 gtk3.x86_64 -y
-// #字体
-// yum install ipa-gothic-fonts xorg-x11-fonts-100dpi xorg-x11-fonts-75dpi xorg-x11-utils xorg-x11-fonts-cyrillic xorg-x11-fonts-Type1 xorg-x11-fonts-misc -y
