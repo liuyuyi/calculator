@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>珍珠棉袋价格计算器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', 'PingFang SC', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 15px;
+            padding-top: calc(20px + env(safe-area-inset-top));
+            padding-bottom: calc(15px + env(safe-area-inset-bottom));
+        }
+        
+        .container {
+            background: white;
+            border-radius: 24px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 24px;
+            max-width: 480px;
+            width: 100%;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 24px;
+            font-size: 20px;
+            font-weight: 600;
+        }
+        
+        .input-group {
+            margin-bottom: 18px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+            font-size: 15px;
+        }
+        
+        input {
+            width: 100%;
+            padding: 18px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            font-size: 18px;
+            transition: all 0.3s ease;
+            outline: none;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        
+        input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        input::placeholder {
+            color: #999;
+        }
+        
+        select {
+            width: 100%;
+            padding: 18px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            outline: none;
+            -webkit-appearance: none;
+            appearance: none;
+            background: white;
+            color: #333;
+            cursor: pointer;
+            position: relative;
+        }
+        
+        select:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .input-group {
+            position: relative;
+        }
+        
+        .input-group::after {
+            content: '\25BC';
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            pointer-events: none;
+            color: #999;
+            font-size: 14px;
+        }
+        
+        .spec-options {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+        }
+        
+        .spec-option {
+            display: flex;
+            align-items: center;
+            padding: 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .spec-option:active {
+            transform: scale(0.98);
+        }
+        
+        .spec-option.selected {
+            border-color: #667eea;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.12), rgba(118, 75, 162, 0.12));
+        }
+        
+        .spec-option input[type="radio"] {
+            width: 22px;
+            height: 22px;
+            margin-right: 14px;
+            accent-color: #667eea;
+            -webkit-appearance: none;
+            appearance: none;
+            border: 2px solid #ccc;
+            border-radius: 50%;
+            position: relative;
+        }
+        
+        .spec-option input[type="radio"]:checked {
+            border-color: #667eea;
+        }
+        
+        .spec-option input[type="radio"]:checked::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 10px;
+            height: 10px;
+            background: #667eea;
+            border-radius: 50%;
+        }
+        
+        .spec-info {
+            flex: 1;
+        }
+        
+        .spec-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+            font-size: 15px;
+        }
+        
+        .spec-price {
+            color: #667eea;
+            font-weight: 700;
+            font-size: 17px;
+        }
+        
+        .result-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 18px;
+            padding: 24px;
+            margin-top: 24px;
+            text-align: center;
+        }
+        
+        .result-label {
+            color: rgba(255,255,255,0.85);
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+        
+        .result-value {
+            color: white;
+            font-size: 42px;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+        
+        .result-unit {
+            color: rgba(255,255,255,0.9);
+            font-size: 18px;
+            margin-left: 6px;
+        }
+        
+        .formula-box {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 18px;
+            text-align: center;
+            font-family: -apple-system, BlinkMacSystemFont, monospace;
+            color: #555;
+            font-size: 14px;
+        }
+        
+        .formula-box strong {
+            color: #667eea;
+            font-weight: 600;
+        }
+        
+        .calculate-btn {
+            width: 100%;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 14px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 18px;
+            transition: all 0.2s ease;
+            -webkit-appearance: none;
+            appearance: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        
+        
+        .dimension-hint {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+        }
+        
+        .price-info {
+            font-size: 14px;
+            color: #888;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📦 珍珠棉袋价格计算器</h1>
+        
+        <div class="input-group">
+            <label>长 (厘米)</label>
+            <input type="number" id="length" placeholder="请输入长度，例如：50" step="1" min="0" oninput="calculate()">
+            <div class="dimension-hint">单位：厘米（cm）</div>
+        </div>
+        
+        <div class="input-group">
+            <label>宽 (厘米)</label>
+            <input type="number" id="width" placeholder="请输入宽度，例如：40" step="1" min="0" oninput="calculate()">
+            <div class="dimension-hint">单位：厘米（cm）</div>
+        </div>
+        
+        <div class="input-group">
+            <label>选择规格</label>
+            <select id="spec-select" onchange="calculate()">
+                <option value="0.5mm">0.5mmT 双面覆膜 - ¥ 0.6 / 平方</option>
+                <option value="1mm">1mmT 覆内膜 - ¥ 1.1 / 平方</option>
+                <option value="2mm">2mmT 覆内膜 - ¥ 1.8 / 平方</option>
+            </select>
+        </div>
+        
+        <div class="input-group">
+            <label>单价涨幅</label>
+            <select id="increase-select" onchange="calculate()">
+                <option value="0.2">涨幅 +20% (原价 × 1.2)</option>
+                <option value="0.3">涨幅 +30% (原价 × 1.3)</option>
+                <option value="0.5" selected>涨幅 +50% (原价 × 1.5)</option>
+                <option value="0.6">涨幅 +60% (原价 × 1.6)</option>
+            </select>
+        </div>
+        
+        <button class="calculate-btn" onclick="calculate()">计算价格</button>
+        
+        <div class="result-box" style="display: none;" id="result">
+            <div class="result-label">计算结果</div>
+            <div class="result-value" id="price">0.00<span class="result-unit">元</span></div>
+        </div>
+        
+        <div class="formula-box" style="display: none;" id="formula">
+            <strong>计算公式：</strong>长 × 宽 × 2 × 单价 = 总价
+        </div>
+    </div>
+    
+    <script>
+        const prices = {
+            '0.5mm': 0.6,
+            '1mm': 1.1,
+            '2mm': 1.8
+        };
+        
+        function calculate() {
+            const length = parseFloat(document.getElementById('length').value);
+            const width = parseFloat(document.getElementById('width').value);
+            const spec = document.getElementById('spec-select').value;
+            const increase = parseFloat(document.getElementById('increase-select').value);
+            
+            // 检查输入是否有效
+            if (isNaN(length) || length <= 0 || isNaN(width) || width <= 0) {
+                // 隐藏结果，不显示警告
+                document.getElementById('result').style.display = 'none';
+                document.getElementById('formula').style.display = 'none';
+                return;
+            }
+            
+            const pricePerSqm = prices[spec];
+            // 将厘米转换为米进行计算：(长/100) × (宽/100) × 2 × 单价 × (1+涨幅)
+            const totalPrice = (length / 100) * (width / 100) * 2 * pricePerSqm * (1 + increase);
+            
+            // 显示结果
+            document.getElementById('price').innerHTML = totalPrice.toString() + '<span class="result-unit">元</span>';
+            document.getElementById('result').style.display = 'block';
+            document.getElementById('formula').style.display = 'block';
+            
+            // 更新公式显示
+            const specNames = {
+                '0.5mm': '0.5mmT双面覆膜',
+                '1mm': '1mmT覆内膜',
+                '2mm': '2mmT覆内膜'
+            };
+        }
+        
+        // 支持回车键计算
+        document.addEventListener('keyup', function(e) {
+            if (e.key === 'Enter') {
+                calculate();
+            }
+        });
+    </script>
+</body>
+</html>
