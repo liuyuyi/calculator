@@ -134,7 +134,7 @@ try {
 } catch (error) {
   console.error('定时任务配置错误:', error);
 }
-
+ n
 function getPage() {
   (async (nowCoPrice, nowAlPrice) => {
     try {
@@ -386,7 +386,7 @@ app.get('/', (req, res) => {
     res.sendFile(__dirname + "/" + "index.html");
 });
 
-app.get('/getPrice', async (req, res) => {
+app.get('/calculator/api/getPrice', async (req, res) => {
   try {
     // 获取最新的铜价格
     copperData.sort((a, b) => b.id - a.id);
@@ -403,7 +403,7 @@ app.get('/getPrice', async (req, res) => {
   }
 });
 
-app.get('/getPriceAll', async (req, res) => {
+app.get('/calculator/api/getPriceAll', async (req, res) => {
   try {
     const params = req.query;
     const num = params.pageSize * 1 || 10;
@@ -431,6 +431,67 @@ app.get('/getPriceAll', async (req, res) => {
     console.error('获取价格列表失败:', error);
     res.end(JSON.stringify({}));
   }
+});
+
+// 代理接口：获取长江有色价格数据
+app.get('/calculator/api/changjiang', (req, res) => {
+  https.get(targetUrl, (response) => {
+    let data = '';
+    
+    response.on('data', (chunk) => {
+      data += chunk;
+    });
+    
+    response.on('end', () => {
+      try {
+        // 使用cheerio解析HTML
+        const $ = cheerio.load(data);
+        
+        // 提取价格数据
+        const prices = [];
+        $('table tr').each((index, element) => {
+          if (index > 0) { // 跳过表头
+            const tds = $(element).find('td');
+            if (tds.length > 0) {
+              const name = $(tds[0]).text().trim();
+              const range = $(tds[1]).text().trim();
+              const avg = $(tds[2]).text().trim();
+              const change = $(tds[3]).text().trim();
+              
+              if (name && avg) {
+                prices.push({
+                  name: name,
+                  range: range,
+                  avg: avg,
+                  change: change
+                });
+              }
+            }
+          }
+        });
+        
+        res.json({
+          success: true,
+          data: prices,
+          updateTime: new Date().toLocaleString('zh-CN')
+        });
+      } catch (error) {
+        console.error('解析价格数据失败:', error);
+        res.json({
+          success: false,
+          message: '解析数据失败',
+          error: error.message
+        });
+      }
+    });
+  }).on('error', (error) => {
+    console.error('获取长江有色数据失败:', error);
+    res.json({
+      success: false,
+      message: '获取数据失败',
+      error: error.message
+    });
+  });
 });
 
 const PORT = process.env.PORT || process.env.port || 3000;
