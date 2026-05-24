@@ -6,7 +6,7 @@ const cheerio = require("cheerio");
 const nodemailer = require("nodemailer");
 const schedule = require("node-schedule");
 const targetUrl = "https://m.cnal.com/market/changjiang/";
-const puppeteer = require("puppeteer");
+// const puppeteer = require("puppeteer"); // 屏蔽截图相关
 
 // 创建一个SMTP客户端配置
 try {
@@ -134,54 +134,55 @@ try {
 } catch (error) {
   console.error('定时任务配置错误:', error);
 }
- n
+
 function getPage() {
   (async (nowCoPrice, nowAlPrice) => {
     try {
-      const browser = await puppeteer.launch({
-          headless: 'new',
-          dumpio: false,
-          ignoreHTTPSErrors: true,
-          defaultViewport: {
-              width: 1280,
-              height: 960
-          },
-          args: ['--no-sandbox', '--disable-setuid-sandbox', '--enable-gpu',
-              '--headless',
-              '--disable-gpu',
-              '--unlimited-storage',
-              '--disable-dev-shm-usage',
-              '--full-memory-crash-report',
-              '--disable-extensions',
-              '--mute-audio',
-              '--no-zygote',
-              '--no-first-run',
-              '--start-maximized'
-          ]
-      });
+      // 屏蔽 puppeteer 截图相关代码
+      // const browser = await puppeteer.launch({
+      //     headless: 'new',
+      //     dumpio: false,
+      //     ignoreHTTPSErrors: true,
+      //     defaultViewport: {
+      //         width: 1280,
+      //         height: 960
+      //     },
+      //     args: ['--no-sandbox', '--disable-setuid-sandbox', '--enable-gpu',
+      //         '--headless',
+      //         '--disable-gpu',
+      //         '--unlimited-storage',
+      //         '--disable-dev-shm-usage',
+      //         '--full-memory-crash-report',
+      //         '--disable-extensions',
+      //         '--mute-audio',
+      //         '--no-zygote',
+      //         '--no-first-run',
+      //         '--start-maximized'
+      //     ]
+      // });
 
-      const page = await browser.newPage();
-      console.log('打开网址----------');
-      await page.goto(targetUrl, { timeout: 60000 });
-      console.log('打开网址----------001');
+      // const page = await browser.newPage();
+      // console.log('打开网址----------');
+      // await page.goto(targetUrl, { timeout: 60000 });
+      // console.log('打开网址----------001');
       
-      // 确保目录存在
-      if (!fs.existsSync('./public/images')) {
-        fs.mkdirSync('./public/images', { recursive: true });
-      }
+      // // 确保目录存在
+      // if (!fs.existsSync('./public/images')) {
+      //   fs.mkdirSync('./public/images', { recursive: true });
+      // }
       
-      await page.screenshot({
-          path: "./public/images/example.jpg",
-          clip: {
-              x: 0,
-              y: 0,
-              width: 800,
-              height: 500
-          }
-      });
-      console.log('打开网址----------002截图后');
-      await browser.close();
-      console.log('打开网址----------003浏览器关闭');
+      // await page.screenshot({
+      //     path: "./public/images/example.jpg",
+      //     clip: {
+      //         x: 0,
+      //         y: 0,
+      //         width: 800,
+      //         height: 500
+      //     }
+      // });
+      // console.log('打开网址----------002截图后');
+      // await browser.close();
+      // console.log('打开网址----------003浏览器关闭');
       
       https.get(targetUrl, res => {
           var html = "";
@@ -297,16 +298,17 @@ function getPage() {
                       mail.html = shtml;
                       mail.subject = priceData.upDateTime + "铜铝价格";
                       
-                      try {
-                          let img = fs.readFileSync("./public/images/example.jpg");
-                          mail.attachments = [{
-                              filename: "实时价格网站截图",
-                              content: img,
-                              cid: "img1"
-                          }];
-                      } catch (error) {
-                          console.error('读取图片失败:', error);
-                      }
+                      // 屏蔽截图附件相关代码
+                      // try {
+                      //     let img = fs.readFileSync("./public/images/example.jpg");
+                      //     mail.attachments = [{
+                      //         filename: "实时价格网站截图",
+                      //         content: img,
+                      //         cid: "img1"
+                      //     }];
+                      // } catch (error) {
+                      //     console.error('读取图片失败:', error);
+                      // }
                   }
 
                   // 铜价格保存到内存
